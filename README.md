@@ -83,6 +83,57 @@ PY
   ```
   Run inside `tmux`/`screen` or as a systemd service for persistence.
 
+### Autostart with systemd (example)
+Create `/etc/systemd/system/kittylog.service`:
+```
+[Unit]
+Description=KittyLog FastAPI service
+After=network.target
+
+[Service]
+User=rwietlisbach
+WorkingDirectory=/home/rwietlisbach/kittylog
+Environment="PATH=/home/rwietlisbach/kittylog/.venv/bin"
+ExecStart=/home/rwietlisbach/kittylog/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+Restart=on-failure
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+Then enable and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable kittylog
+sudo systemctl start kittylog
+sudo systemctl status kittylog
+```
+Check logs with: `journalctl -u kittylog -f`
+
+Create the service file via script:
+```bash
+cat <<'EOF' | sudo tee /etc/systemd/system/kittylog.service
+[Unit]
+Description=KittyLog FastAPI service
+After=network.target
+
+[Service]
+User=rwietlisbach
+WorkingDirectory=/home/rwietlisbach/kittylog
+Environment="PATH=/home/rwietlisbach/kittylog/.venv/bin"
+ExecStart=/home/rwietlisbach/kittylog/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+Restart=on-failure
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable kittylog
+sudo systemctl start kittylog
+sudo systemctl status kittylog
+```
+
 ## History view
 - Route: `/history`
 - Filters: dropdown for task type plus start/end date inputs (inclusive)
