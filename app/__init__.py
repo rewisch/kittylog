@@ -1,0 +1,1 @@
+"""KittyLog application package."""

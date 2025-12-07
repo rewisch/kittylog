@@ -1,0 +1,25 @@
+tasks:
+  - slug: clean_litter
+    name: "Cleaned litter box"
+    icon: "🧹"
+    color: "amber"
+  - slug: feed
+    name: "Fed the cat"
+    icon: "🍽️"
+    color: "blue"
+  - slug: change_sand
+    name: "Changed litter sand"
+    icon: "🏖️"
+    color: "purple"
+  - slug: give_meds
+    name: "Gave medicine"
+    icon: "💊"
+    color: "red"
+  - slug: clean_teeth
+    name: "Gave teeth clean pulver"
+    icon: "🦷"
+    color: "white"
+  - slug: "playtime"
+    name: "Played with the cats"
+    icon: "🎮"
+    color: "green"

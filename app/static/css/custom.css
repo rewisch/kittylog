@@ -1,0 +1,9 @@
+:root {
+    color-scheme: dark;
+}
+
+/* Subtle drop shadow around the main container */
+main {
+    position: relative;
+    z-index: 1;
+}
