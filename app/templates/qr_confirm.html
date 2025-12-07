@@ -7,15 +7,15 @@
         <h1 class="text-2xl font-semibold mb-2">{{ task.name if task else "Task" }}</h1>
         {% if event %}
             <p class="text-emerald-300 font-semibold mb-1">{{ message or "Logged!" }}</p>
-            <p class="text-slate-400 text-sm mb-6">{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC · {{ event.who or "Anon" }}</p>
-            <a href="/" class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10">Back to dashboard</a>
+            <p class="text-slate-400 text-sm mb-6">{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC · {{ event.who or ("Anon" if lang == "en" else "Anonym") }}</p>
+            <a href="/?lang={{ lang }}" class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10">{{ t("back_to_dashboard", lang) }}</a>
         {% else %}
-            <p class="text-slate-400 mb-6">Tap confirm to log this chore.</p>
-            <form method="post" action="/q/{{ task.slug }}/confirm" class="space-y-3">
+            <p class="text-slate-400 mb-6">{{ t("confirm_screen", lang) }}</p>
+            <form method="post" action="/q/{{ task.slug }}/confirm?lang={{ lang }}" class="space-y-3">
                 {% if who %}<input type="hidden" name="who" value="{{ who }}">{% endif %}
                 {% if note %}<input type="hidden" name="note" value="{{ note }}">{% endif %}
-                <button type="submit" class="w-full bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-emerald-500/25">Confirm</button>
-                <p class="text-xs text-slate-500">Add <code>?auto=1</code> to skip this screen.</p>
+                <button type="submit" class="w-full bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-emerald-500/25">{{ t("confirm_cta", lang) }}</button>
+                <p class="text-xs text-slate-500">{{ t("confirm_hint", lang) }}</p>
             </form>
         {% endif %}
     </div>

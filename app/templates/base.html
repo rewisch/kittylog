@@ -29,12 +29,17 @@
                     <div class="h-10 w-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-xl shadow-lg shadow-emerald-500/30">🐾</div>
                     <div>
                         <p class="text-lg font-semibold tracking-tight">KittyLog</p>
-                        <p class="text-xs text-slate-400">QR-first cat care tracker</p>
+                        <p class="text-xs text-slate-400">{{ t("app_tagline", lang) }}</p>
                     </div>
                 </div>
-                <nav class="flex gap-3 text-sm">
-                    <a href="/" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">Dashboard</a>
-                    <a href="/history" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">History</a>
+                <nav class="flex items-center gap-3 text-sm">
+                    <a href="/?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">Dashboard</a>
+                    <a href="/history?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">History</a>
+                    <div class="flex items-center gap-1 text-xs text-slate-400">
+                        {% for code in supported_langs %}
+                        <a href="{{ request.url.path }}?lang={{ code }}" class="px-2 py-1 rounded-lg border border-white/5 hover:border-white/20 {{ 'bg-white/10 text-slate-100' if lang==code else 'text-slate-400' }}">{{ code.upper() }}</a>
+                        {% endfor %}
+                    </div>
                 </nav>
             </div>
         </header>

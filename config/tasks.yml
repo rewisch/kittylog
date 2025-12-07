@@ -1,25 +1,21 @@
 tasks:
   - slug: clean_litter
-    name: "Cleaned litter box"
+    name: "Katzenklo reinigen"
     icon: "🧹"
     color: "amber"
   - slug: feed
-    name: "Fed the cat"
+    name: "Füttern"
     icon: "🍽️"
     color: "blue"
   - slug: change_sand
-    name: "Changed litter sand"
+    name: "Sand im Klo ausgetauscht"
     icon: "🏖️"
     color: "purple"
-  - slug: give_meds
-    name: "Gave medicine"
-    icon: "💊"
-    color: "red"
   - slug: clean_teeth
-    name: "Gave teeth clean pulver"
+    name: "Zahnputzflocken geben"
     icon: "🦷"
     color: "white"
   - slug: "playtime"
-    name: "Played with the cats"
+    name: "Spielen"
     icon: "🎮"
     color: "green"

@@ -132,3 +132,8 @@ kittylog/
 - Tailwind is loaded via CDN; no Node build step.
 - Default mode is dark with rounded cards and gradients; mobile-friendly layout is included.
 - Add your own screenshots to `docs/` or the README after running the app (placeholders not committed).
+
+## Language support
+- Default UI language: English.
+- German available via `?lang=de` (e.g., `http://localhost:8000/?lang=de` or `http://localhost:8000/q/feed?lang=de`).
+- The top-right language toggle writes a `lang` cookie so navigation and forms stay in the chosen language.

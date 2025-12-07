@@ -3,12 +3,12 @@
 {% block content %}
 <div class="flex items-center justify-between mb-6">
     <div>
-        <p class="text-xs uppercase tracking-[0.3em] text-slate-400 mb-1">Overview</p>
-        <h1 class="text-2xl font-semibold">Cat care dashboard</h1>
-        <p class="text-slate-400 text-sm">Log chores instantly from here or by scanning a QR.</p>
+        <p class="text-xs uppercase tracking-[0.3em] text-slate-400 mb-1">{{ t("overview_label", lang) }}</p>
+        <h1 class="text-2xl font-semibold">{{ t("dashboard_title", lang) }}</h1>
+        <p class="text-slate-400 text-sm">{{ t("dashboard_subtitle", lang) }}</p>
     </div>
     <div class="text-right text-sm text-slate-400">
-        <p class="font-semibold text-slate-200">Quick QR</p>
+        <p class="font-semibold text-slate-200">{{ t("quick_qr", lang) }}</p>
         <p>Use <code class="bg-white/5 px-2 py-1 rounded">/q/&lt;slug&gt;?auto=1</code></p>
     </div>
 </div>
@@ -29,22 +29,22 @@
         <div class="mt-4 text-sm text-slate-300">
             {% set ev = last_events.get(task.id) %}
             {% if ev %}
-                <p class="font-semibold">{{ humanize(ev.timestamp) }} · {{ ev.who or "someone" }}</p>
+                <p class="font-semibold">{{ humanize(ev.timestamp, lang) }} · {{ ev.who or ("someone" if lang == "en" else "jemand") }}</p>
                 {% if ev.note %}<p class="text-slate-400">“{{ ev.note }}”</p>{% endif %}
             {% else %}
-                <p class="text-slate-400">Not logged yet.</p>
+                <p class="text-slate-400">{{ t("not_logged_yet", lang) }}</p>
             {% endif %}
         </div>
-        <form method="post" action="/log" class="mt-4 space-y-3">
+        <form method="post" action="/log?lang={{ lang }}" class="mt-4 space-y-3">
             <input type="hidden" name="slug" value="{{ task.slug }}">
             <div class="grid grid-cols-2 gap-2 text-sm">
-                <input name="who" placeholder="Who did it?" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-2 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
-                <input name="note" placeholder="Note (optional)" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-2 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
+                <input name="who" placeholder="{{ t('log_form_who', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-2 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
+                <input name="note" placeholder="{{ t('log_form_note', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-2 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
             </div>
-            <button type="submit" class="w-full bg-{{ task.color }}-500/90 hover:bg-{{ task.color }}-500 text-slate-950 font-semibold py-2.5 rounded-xl transition shadow-lg shadow-{{ task.color }}-500/20">Log now</button>
+            <button type="submit" class="w-full bg-{{ task.color }}-500/90 hover:bg-{{ task.color }}-500 text-slate-950 font-semibold py-2.5 rounded-xl transition shadow-lg shadow-{{ task.color }}-500/20">{{ t("log_now", lang) }}</button>
             <div class="text-xs text-slate-500 flex justify-between">
-                <a class="hover:text-slate-200" href="/q/{{ task.slug }}">Confirm screen</a>
-                <a class="hover:text-slate-200" href="/q/{{ task.slug }}?auto=1">Auto log</a>
+                <a class="hover:text-slate-200" href="/q/{{ task.slug }}?lang={{ lang }}">{{ t("confirm_screen", lang) }}</a>
+                <a class="hover:text-slate-200" href="/q/{{ task.slug }}?auto=1&lang={{ lang }}">{{ t("auto_log", lang) }}</a>
             </div>
         </form>
     </div>

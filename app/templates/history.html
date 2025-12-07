@@ -4,23 +4,24 @@
 <div class="flex items-center justify-between mb-6">
     <div>
         <p class="text-xs uppercase tracking-[0.3em] text-slate-400 mb-1">History</p>
-        <h1 class="text-2xl font-semibold">Everything that's been logged</h1>
-        <p class="text-slate-400 text-sm">Filter by task or date range to audit chores.</p>
+        <h1 class="text-2xl font-semibold">{{ t("history_title", lang) }}</h1>
+        <p class="text-slate-400 text-sm">{{ t("history_subtitle", lang) }}</p>
     </div>
 </div>
 
 <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 text-sm">
+    <input type="hidden" name="lang" value="{{ lang }}">
     <select name="task" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
-        <option value="">All tasks</option>
+        <option value="">{{ t("all_tasks", lang) }}</option>
         {% for t in tasks %}
         <option value="{{ t.slug }}" {% if selected_task == t.slug %}selected{% endif %}>{{ t.name }}</option>
         {% endfor %}
     </select>
-    <input type="date" name="start_date" value="{{ start_date }}" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40" placeholder="Start date">
-    <input type="date" name="end_date" value="{{ end_date }}" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40" placeholder="End date">
+    <input type="date" name="start_date" value="{{ start_date }}" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40" placeholder="{{ t('start_date', lang) }}">
+    <input type="date" name="end_date" value="{{ end_date }}" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40" placeholder="{{ t('end_date', lang) }}">
     <div class="flex gap-2">
-        <button type="submit" class="flex-1 bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold px-3 py-2 rounded-xl transition shadow-lg shadow-emerald-500/20">Apply</button>
-        <a href="/history" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5">Reset</a>
+        <button type="submit" class="flex-1 bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold px-3 py-2 rounded-xl transition shadow-lg shadow-emerald-500/20">{{ t("filters_apply", lang) }}</button>
+        <a href="/history?lang={{ lang }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5">{{ t("filters_reset", lang) }}</a>
     </div>
 </form>
 
@@ -30,16 +31,16 @@
     <div class="bg-slate-900/70 border border-white/5 rounded-2xl p-3 flex items-center gap-3 shadow-lg shadow-black/40">
         <div class="h-12 w-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl">{{ task.icon if task else "🐾" }}</div>
         <div class="flex-1">
-            <p class="font-semibold">{{ task.name if task else "Unknown task" }}</p>
-            <p class="text-slate-400 text-sm">{{ ev.note or "No note" }}</p>
+            <p class="font-semibold">{{ task.name if task else ( "Unknown task" if lang == "en" else "Unbekannte Aufgabe") }}</p>
+            <p class="text-slate-400 text-sm">{{ ev.note or ("No note" if lang == "en" else "Keine Notiz") }}</p>
         </div>
         <div class="text-right text-sm">
-            <p class="text-slate-200">{{ humanize(ev.timestamp) }}</p>
-            <p class="text-slate-500">{{ ev.who or "Anon" }} · {{ ev.source or "web" }}</p>
+            <p class="text-slate-200">{{ humanize(ev.timestamp, lang) }}</p>
+            <p class="text-slate-500">{{ ev.who or ("Anon" if lang == "en" else "Anonym") }} · {{ ev.source or "web" }}</p>
         </div>
     </div>
     {% else %}
-    <div class="text-slate-400 text-sm">No events match the current filters yet.</div>
+    <div class="text-slate-400 text-sm">{{ t("history_empty", lang) }}</div>
     {% endfor %}
 </div>
 {% endblock %}

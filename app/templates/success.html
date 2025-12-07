@@ -6,7 +6,7 @@
         <div class="mx-auto h-16 w-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-3xl mb-4">{{ icon or "🐾" }}</div>
         <h1 class="text-2xl font-semibold mb-2">{{ title or "Logged!" }}</h1>
         <p class="text-slate-400 mb-6">{{ message or "Your event was recorded." }}</p>
-        <a href="/" class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10">Back to dashboard</a>
+        <a href="/?lang={{ lang if lang else 'en' }}" class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10">{{ t("back_to_dashboard", lang if lang else 'en') }}</a>
     </div>
 </div>
 {% endblock %}

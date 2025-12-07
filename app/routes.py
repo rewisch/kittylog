@@ -10,28 +10,34 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
 from .database import get_session
+from .i18n import resolve_language, translate, SUPPORTED_LANGS
 from .models import TaskEvent, TaskType
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.globals["t"] = translate
+templates.env.globals["supported_langs"] = SUPPORTED_LANGS
 router = APIRouter()
 
 
-def humanize_timestamp(ts: datetime | None) -> str:
+def humanize_timestamp(ts: datetime | None, lang: str = "en") -> str:
     """Return a short relative time string."""
     if ts is None:
-        return "Never"
+        return "Never" if lang == "en" else "Noch nie"
     delta = datetime.utcnow() - ts
     if delta < timedelta(minutes=1):
-        return "just now"
+        return "just now" if lang == "en" else "gerade eben"
     if delta < timedelta(hours=1):
         minutes = int(delta.total_seconds() // 60)
-        return f"{minutes}m ago"
+        suffix = "m ago" if lang == "en" else "Min. her"
+        return f"{minutes}{suffix if lang == 'en' else f' {suffix}'}"
     if delta < timedelta(days=1):
         hours = int(delta.total_seconds() // 3600)
-        return f"{hours}h ago"
+        suffix = "h ago" if lang == "en" else "Std. her"
+        return f"{hours}{suffix if lang == 'en' else f' {suffix}'}"
     days = delta.days
-    return f"{days}d ago"
+    suffix = "d ago" if lang == "en" else "Tg. her"
+    return f"{days}{suffix if lang == 'en' else f' {suffix}'}"
 
 
 def create_event(
@@ -55,6 +61,7 @@ def create_event(
 
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, session: Session = Depends(get_session)) -> Any:
+    lang = resolve_language(request)
     tasks = session.exec(
         select(TaskType).where(TaskType.is_active == True).order_by(TaskType.name)  # noqa: E712
     ).all()
@@ -66,15 +73,19 @@ def dashboard(request: Request, session: Session = Depends(get_session)) -> Any:
             .order_by(TaskEvent.timestamp.desc())
             .limit(1)
         ).first()
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "tasks": tasks,
             "last_events": last_events,
             "humanize": humanize_timestamp,
+            "lang": lang,
         },
     )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
 
 
 @router.get("/history", response_class=HTMLResponse)
@@ -85,6 +96,7 @@ def history(
     end_date: date | None = Query(None),
     session: Session = Depends(get_session),
 ) -> Any:
+    lang = resolve_language(request)
     query = select(TaskEvent).order_by(TaskEvent.timestamp.desc())
     if task:
         query = query.join(TaskType).where(TaskType.slug == task)
@@ -99,7 +111,7 @@ def history(
     task_types = session.exec(select(TaskType).order_by(TaskType.name)).all()
     task_map = {t.id: t for t in task_types}
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "history.html",
         {
             "request": request,
@@ -110,8 +122,12 @@ def history(
             "start_date": start_date,
             "end_date": end_date,
             "humanize": humanize_timestamp,
+            "lang": lang,
         },
     )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
 
 
 @router.post("/log", response_class=HTMLResponse)
@@ -122,21 +138,26 @@ def log_task(
     note: str | None = Form(None),
     session: Session = Depends(get_session),
 ) -> Any:
+    lang = resolve_language(request)
     task = session.exec(select(TaskType).where(TaskType.slug == slug)).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
     event = create_event(session, task, who, note, source="web")
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "qr_confirm.html",
         {
             "request": request,
             "task": task,
             "event": event,
             "auto": True,
-            "message": "Logged!",
+            "message": translate("confirm_message_logged", lang),
+            "lang": lang,
         },
     )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
 
 
 @router.get("/q/{task_slug}", response_class=HTMLResponse)
@@ -148,24 +169,29 @@ def qr_landing(
     note: str | None = None,
     session: Session = Depends(get_session),
 ) -> Any:
+    lang = resolve_language(request)
     task = session.exec(select(TaskType).where(TaskType.slug == task_slug)).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
     if auto == 1:
         event = create_event(session, task, who, note, source="qr")
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             "qr_confirm.html",
             {
                 "request": request,
                 "task": task,
                 "event": event,
                 "auto": True,
-                "message": "Logged!",
+                "message": translate("confirm_message_logged", lang),
+                "lang": lang,
             },
         )
+        if request.query_params.get("lang"):
+            response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+        return response
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "qr_confirm.html",
         {
             "request": request,
@@ -174,8 +200,12 @@ def qr_landing(
             "auto": False,
             "who": who,
             "note": note,
+            "lang": lang,
         },
     )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
 
 
 @router.post("/q/{task_slug}/confirm", response_class=HTMLResponse)
@@ -186,18 +216,23 @@ def qr_confirm(
     note: str | None = Form(None),
     session: Session = Depends(get_session),
 ) -> Any:
+    lang = resolve_language(request)
     task = session.exec(select(TaskType).where(TaskType.slug == task_slug)).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
     event = create_event(session, task, who, note, source="qr")
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "qr_confirm.html",
         {
             "request": request,
             "task": task,
             "event": event,
             "auto": True,
-            "message": "Logged!",
+            "message": translate("confirm_message_logged", lang),
+            "lang": lang,
         },
     )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
