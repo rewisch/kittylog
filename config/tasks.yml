@@ -14,7 +14,7 @@ tasks:
   - slug: clean_teeth
     name: "Zahnputzflocken geben"
     icon: "🦷"
-    color: "white"
+    color: "yellow"
   - slug: "playtime"
     name: "Spielen"
     icon: "🎮"
