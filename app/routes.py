@@ -39,6 +39,21 @@ def current_user(request: Request) -> str | None:
     return request.session.get("user")
 
 
+def parse_date_param(raw_value: str | None, field_name: str) -> date | None:
+    """Parse an ISO date query parameter while allowing empty values."""
+    if raw_value is None:
+        return None
+    value = raw_value.strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field_name}"
+        )
+
+
 def humanize_timestamp(ts: datetime | None, lang: str = "en") -> str:
     """Return a short relative time string."""
     if ts is None:
@@ -169,8 +184,8 @@ def dashboard(
 def history(
     request: Request,
     task: str | None = Query(None),
-    start_date: date | None = Query(None),
-    end_date: date | None = Query(None),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
@@ -178,11 +193,13 @@ def history(
     query = select(TaskEvent).order_by(TaskEvent.timestamp.desc())
     if task:
         query = query.join(TaskType).where(TaskType.slug == task)
-    if start_date:
-        start_dt = datetime.combine(start_date, time.min)
+    start_date_value = parse_date_param(start_date, "start_date")
+    end_date_value = parse_date_param(end_date, "end_date")
+    if start_date_value:
+        start_dt = datetime.combine(start_date_value, time.min)
         query = query.where(TaskEvent.timestamp >= start_dt)
-    if end_date:
-        end_dt = datetime.combine(end_date, time.max)
+    if end_date_value:
+        end_dt = datetime.combine(end_date_value, time.max)
         query = query.where(TaskEvent.timestamp <= end_dt)
 
     events = session.exec(query).all()
@@ -197,8 +214,8 @@ def history(
             "tasks": task_types,
             "task_map": task_map,
             "selected_task": task,
-            "start_date": start_date,
-            "end_date": end_date,
+            "start_date": start_date_value,
+            "end_date": end_date_value,
             "humanize": humanize_timestamp,
             "lang": lang,
             "user": user,
