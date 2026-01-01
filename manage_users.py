@@ -6,14 +6,13 @@ import getpass
 import sys
 from pathlib import Path
 
-from app.auth import encode_password, get_users_file_path, load_users
-
-
-def write_users(users: dict[str, str], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for username, encoded in sorted(users.items()):
-            f.write(f"{username}:{encoded}\n")
+from app.auth import (
+    UserRecord,
+    encode_password,
+    get_users_file_path,
+    load_users,
+    save_users,
+)
 
 
 def prompt_password() -> str:
@@ -30,13 +29,17 @@ def add_or_update_user(username: str, path: Path, *, allow_update: bool) -> None
     if ":" in username or not username:
         raise ValueError("Username must be non-empty and cannot contain ':'.")
 
-    users = load_users(path)
+    users: dict[str, UserRecord] = load_users(path)
     if username in users and not allow_update:
         raise ValueError(f"User '{username}' already exists. Use --update to overwrite.")
 
     password = prompt_password()
-    users[username] = encode_password(password)
-    write_users(users, path)
+    users[username] = {
+        "encoded": encode_password(password),
+        "active": True,
+        "failed_attempts": 0,
+    }
+    save_users(users, path)
     print(f"Saved user '{username}' to {path}")
 
 

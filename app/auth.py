@@ -5,7 +5,7 @@ import hmac
 import os
 import secrets
 from pathlib import Path
-from typing import Dict
+from typing import Dict, TypedDict
 
 
 # PBKDF2 parameters chosen to be slow enough for brute-force resistance while
@@ -13,6 +13,13 @@ from typing import Dict
 ALGORITHM = "pbkdf2_sha256"
 ITERATIONS = 310_000
 SALT_BYTES = 16
+MAX_FAILED_ATTEMPTS = 5
+
+
+class UserRecord(TypedDict):
+    encoded: str
+    active: bool
+    failed_attempts: int
 
 
 def get_users_file_path() -> Path:
@@ -52,24 +59,48 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(computed.hex(), stored_hash)
 
 
-def load_users(path: Path | None = None) -> Dict[str, str]:
-    """Return {username: encoded_password} mapping; ignores malformed lines."""
+def load_users(path: Path | None = None) -> Dict[str, UserRecord]:
+    """Return {username: UserRecord} mapping; ignores malformed lines."""
     users_path = path or get_users_file_path()
     if not users_path.exists():
         return {}
 
-    users: Dict[str, str] = {}
+    users: Dict[str, UserRecord] = {}
     with users_path.open("r", encoding="utf-8") as f:
         for raw_line in f:
             line = raw_line.strip()
             if not line or line.startswith("#") or ":" not in line:
                 continue
-            username, encoded = line.split(":", 1)
-            username = username.strip()
-            encoded = encoded.strip()
+            parts = line.split(":", maxsplit=3)
+            if len(parts) < 2:
+                continue
+            username, encoded = parts[0].strip(), parts[1].strip()
+            active = True
+            failed_attempts = 0
+            if len(parts) >= 3 and parts[2]:
+                active = parts[2].strip() != "0"
+            if len(parts) == 4 and parts[3]:
+                try:
+                    failed_attempts = int(parts[3].strip())
+                except ValueError:
+                    failed_attempts = 0
             if username and encoded:
-                users[username] = encoded
+                users[username] = {
+                    "encoded": encoded,
+                    "active": active,
+                    "failed_attempts": max(failed_attempts, 0),
+                }
     return users
+
+
+def save_users(users: Dict[str, UserRecord], path: Path | None = None) -> None:
+    users_path = path or get_users_file_path()
+    users_path.parent.mkdir(parents=True, exist_ok=True)
+    with users_path.open("w", encoding="utf-8") as f:
+        for username, record in sorted(users.items()):
+            active_flag = "1" if record["active"] else "0"
+            fails = max(record.get("failed_attempts", 0), 0)
+            f.write(f"{username}:{record['encoded']}:{active_flag}:{fails}\n")
 
 
 def authenticate_user(username: str, password: str) -> bool:
@@ -77,7 +108,17 @@ def authenticate_user(username: str, password: str) -> bool:
     if ":" in username or not username:
         return False
     users = load_users()
-    encoded = users.get(username)
-    if not encoded:
+    record = users.get(username)
+    if not record or not record["active"]:
         return False
-    return verify_password(password, encoded)
+    if verify_password(password, record["encoded"]):
+        if record["failed_attempts"] != 0:
+            record["failed_attempts"] = 0
+            save_users(users)
+        return True
+
+    record["failed_attempts"] += 1
+    if record["failed_attempts"] > MAX_FAILED_ATTEMPTS:
+        record["active"] = False
+    save_users(users)
+    return False
