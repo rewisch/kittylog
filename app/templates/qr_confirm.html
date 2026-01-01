@@ -12,7 +12,6 @@
         {% else %}
             <p class="text-slate-400 mb-6">{{ t("confirm_screen", lang) }}</p>
             <form method="post" action="/q/{{ task.slug }}/confirm?lang={{ lang }}" class="space-y-3">
-                {% if who %}<input type="hidden" name="who" value="{{ who }}">{% endif %}
                 {% if note %}<input type="hidden" name="note" value="{{ note }}">{% endif %}
                 <button type="submit" class="w-full bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-emerald-500/25">{{ t("confirm_cta", lang) }}</button>
                 <p class="text-xs text-slate-500">{{ t("confirm_hint", lang) }}</p>

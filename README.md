@@ -34,5 +34,5 @@ Fields: `slug` (unique), `name`, `icon` (emoji/text), `color` (Tailwind color na
 ## Logging
 - Dashboard buttons log tasks with optional `who`/`note`.
 - QR confirm: `http://<host>:8000/q/<slug>`
-- QR auto: `http://<host>:8000/q/<slug>?auto=1&who=Alex&note=lunch`
+- QR auto: `http://<host>:8000/q/<slug>?auto=1&note=lunch` (uses logged-in user)
 - The top-right language toggle writes a `lang` cookie so navigation and forms stay in the chosen language.

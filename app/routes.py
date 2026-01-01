@@ -247,7 +247,6 @@ def qr_landing(
     request: Request,
     task_slug: str,
     auto: int = 0,
-    who: str | None = None,
     note: str | None = None,
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
@@ -258,8 +257,7 @@ def qr_landing(
         raise HTTPException(status_code=404, detail="Task not found")
 
     if auto == 1:
-        actor = who or user
-        event = create_event(session, task, actor, note, source="qr")
+        event = create_event(session, task, user, note, source="qr")
         response = templates.TemplateResponse(
             "qr_confirm.html",
             {
@@ -283,7 +281,6 @@ def qr_landing(
             "task": task,
             "event": None,
             "auto": False,
-            "who": who or user,
             "note": note,
             "lang": lang,
             "user": user,
@@ -298,7 +295,6 @@ def qr_landing(
 def qr_confirm(
     request: Request,
     task_slug: str,
-    who: str | None = Form(None),
     note: str | None = Form(None),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
@@ -308,8 +304,7 @@ def qr_confirm(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    actor = who or user
-    event = create_event(session, task, actor, note, source="qr")
+    event = create_event(session, task, user, note, source="qr")
     response = templates.TemplateResponse(
         "qr_confirm.html",
         {
