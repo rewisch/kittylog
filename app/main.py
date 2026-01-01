@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
+import secrets
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from sqlmodel import Session
 
 from .config_loader import load_task_configs, sync_task_types
@@ -12,6 +15,16 @@ from .routes import router
 
 
 app = FastAPI(title="KittyLog")
+secret_key = os.getenv("KITTYLOG_SECRET_KEY") or secrets.token_hex(32)
+cookie_secure = os.getenv("KITTYLOG_SESSION_SECURE", "false").lower() == "true"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=secret_key,
+    session_cookie="kittylog_session",
+    max_age=7 * 24 * 3600,
+    same_site="lax",
+    https_only=cookie_secure,
+)
 app.include_router(router)
 
 app.mount(

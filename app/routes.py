@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
+from .auth import authenticate_user
 from .database import get_session
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
 from .models import TaskEvent, TaskType
@@ -18,6 +20,23 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["t"] = translate
 templates.env.globals["supported_langs"] = SUPPORTED_LANGS
 router = APIRouter()
+
+
+def require_user(request: Request) -> str:
+    """Ensure a session user is present, otherwise redirect to login."""
+    user = request.session.get("user")
+    if user:
+        return user
+    next_url = request.url.path
+    if request.url.query:
+        next_url = f"{next_url}?{request.url.query}"
+    login_url = f"/login?next={quote(next_url, safe='')}"
+    raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": login_url})
+
+
+def current_user(request: Request) -> str | None:
+    """Return current session user or None."""
+    return request.session.get("user")
 
 
 def humanize_timestamp(ts: datetime | None, lang: str = "en") -> str:
@@ -59,8 +78,65 @@ def create_event(
     return event
 
 
+@router.get("/login", response_class=HTMLResponse)
+def login_form(request: Request, next: str = Query("/")) -> Any:
+    lang = resolve_language(request)
+    existing_user = current_user(request)
+    if existing_user:
+        redirect_target = next if str(next).startswith("/") else "/"
+        return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "lang": lang,
+            "next": next,
+            "error": None,
+            "user": None,
+        },
+    )
+
+
+@router.post("/login", response_class=HTMLResponse)
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/"),
+) -> Any:
+    lang = resolve_language(request)
+    if authenticate_user(username, password):
+        request.session["user"] = username
+        redirect_target = next if str(next).startswith("/") else "/"
+        return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "lang": lang,
+            "next": next,
+            "error": translate("login_error", lang),
+            "user": None,
+        },
+        status_code=status.HTTP_401_UNAUTHORIZED,
+    )
+
+
+@router.post("/logout")
+def logout(request: Request, next: str = Form("/login")) -> RedirectResponse:
+    redirect_target = next if str(next).startswith("/") else "/login"
+    request.session.clear()
+    response = RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie("kittylog_session")
+    return response
+
+
 @router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, session: Session = Depends(get_session)) -> Any:
+def dashboard(
+    request: Request,
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Any:
     lang = resolve_language(request)
     tasks = session.exec(
         select(TaskType).where(TaskType.is_active == True).order_by(TaskType.name)  # noqa: E712
@@ -81,6 +157,7 @@ def dashboard(request: Request, session: Session = Depends(get_session)) -> Any:
             "last_events": last_events,
             "humanize": humanize_timestamp,
             "lang": lang,
+            "user": user,
         },
     )
     if request.query_params.get("lang"):
@@ -94,6 +171,7 @@ def history(
     task: str | None = Query(None),
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
+    user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
@@ -123,6 +201,7 @@ def history(
             "end_date": end_date,
             "humanize": humanize_timestamp,
             "lang": lang,
+            "user": user,
         },
     )
     if request.query_params.get("lang"):
@@ -136,6 +215,7 @@ def log_task(
     slug: str = Form(...),
     who: str | None = Form(None),
     note: str | None = Form(None),
+    user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
@@ -143,7 +223,8 @@ def log_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    event = create_event(session, task, who, note, source="web")
+    actor = who or user
+    event = create_event(session, task, actor, note, source="web")
     response = templates.TemplateResponse(
         "qr_confirm.html",
         {
@@ -153,6 +234,7 @@ def log_task(
             "auto": True,
             "message": translate("confirm_message_logged", lang),
             "lang": lang,
+            "user": user,
         },
     )
     if request.query_params.get("lang"):
@@ -167,6 +249,7 @@ def qr_landing(
     auto: int = 0,
     who: str | None = None,
     note: str | None = None,
+    user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
@@ -175,7 +258,8 @@ def qr_landing(
         raise HTTPException(status_code=404, detail="Task not found")
 
     if auto == 1:
-        event = create_event(session, task, who, note, source="qr")
+        actor = who or user
+        event = create_event(session, task, actor, note, source="qr")
         response = templates.TemplateResponse(
             "qr_confirm.html",
             {
@@ -185,6 +269,7 @@ def qr_landing(
                 "auto": True,
                 "message": translate("confirm_message_logged", lang),
                 "lang": lang,
+                "user": user,
             },
         )
         if request.query_params.get("lang"):
@@ -198,9 +283,10 @@ def qr_landing(
             "task": task,
             "event": None,
             "auto": False,
-            "who": who,
+            "who": who or user,
             "note": note,
             "lang": lang,
+            "user": user,
         },
     )
     if request.query_params.get("lang"):
@@ -214,6 +300,7 @@ def qr_confirm(
     task_slug: str,
     who: str | None = Form(None),
     note: str | None = Form(None),
+    user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
@@ -221,7 +308,8 @@ def qr_confirm(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    event = create_event(session, task, who, note, source="qr")
+    actor = who or user
+    event = create_event(session, task, actor, note, source="qr")
     response = templates.TemplateResponse(
         "qr_confirm.html",
         {
@@ -231,6 +319,7 @@ def qr_confirm(
             "auto": True,
             "message": translate("confirm_message_logged", lang),
             "lang": lang,
+            "user": user,
         },
     )
     if request.query_params.get("lang"):

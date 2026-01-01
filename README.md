@@ -27,6 +27,17 @@ KittyLog is a tiny QR-friendly FastAPI app for logging cat-care chores. It reads
 
 The database (`kittylog.db`) is created automatically on first run. Task types from `config/tasks.yml` are created or updated at startup.
 
+## Authentication
+- All routes except `/health` are protected; visit `/login` to sign in.
+- Configure a session secret: set `KITTYLOG_SECRET_KEY` to a long random string. For HTTPS deployments set `KITTYLOG_SESSION_SECURE=true` to force secure cookies.
+- Users live in a flat text file (default `config/users.txt`, override with `KITTYLOG_USERS_FILE=/path/to/users.txt`). Each line is `username:pbkdf2_sha256$iterations$salt$hash`.
+- Add/update users with the helper script (prompts for password twice):
+  ```bash
+  python manage_users.py alice            # create alice
+  python manage_users.py alice --update   # change alice's password
+  ```
+- When logged in, the “who” field defaults to the signed-in username for all logs (including QR flows).
+
 ## Configuration (`config/tasks.yml`)
 Each entry defines a task type:
 ```yaml
