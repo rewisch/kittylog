@@ -11,6 +11,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 Visit `http://localhost:8000` (history at `/history`). DB and task types are created/updated on startup.
 
+If running over cloudflare:
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
+
 ## Auth
 - All routes except `/health` require login at `/login`.
 - Set `KITTYLOG_SECRET_KEY` to a long random string (required in prod). Set `KITTYLOG_SESSION_SECURE=true` when served over HTTPS.
