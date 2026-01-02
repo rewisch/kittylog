@@ -10,7 +10,6 @@ class TaskEvent(SQLModel, table=True):
     who: str | None = Field(default=None, max_length=100)
     source: str | None = Field(default=None, max_length=50)
     note: str | None = Field(default=None, max_length=500)
-    deleted: bool = Field(default=False, index=True)
 
     task_type: "TaskType" = Relationship(back_populates="events")
 
