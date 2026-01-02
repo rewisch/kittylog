@@ -77,6 +77,17 @@
             <p class="text-slate-200">{{ humanize(ev.timestamp, lang) }}</p>
             <p class="text-slate-500">{{ ev.who or ("Anon" if lang == "en" else "Anonym") }} · {{ ev.source or "web" }}</p>
         </div>
+        <form method="post" action="/history/{{ ev.id }}/delete" class="self-start">
+            <input type="hidden" name="lang" value="{{ lang }}">
+            {% if selected_task %}<input type="hidden" name="task" value="{{ selected_task }}">{% endif %}
+            {% if start_date %}<input type="hidden" name="start_date" value="{{ start_date }}">{% endif %}
+            {% if end_date %}<input type="hidden" name="end_date" value="{{ end_date }}">{% endif %}
+            {% if preset %}<input type="hidden" name="preset" value="{{ preset }}">{% endif %}
+            {% if page %}<input type="hidden" name="page" value="{{ page }}">{% endif %}
+            <button type="submit" onclick="return confirm('{{ t('delete_confirm', lang) }}');" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-xs text-slate-200">
+                {{ t("delete_entry", lang) }}
+            </button>
+        </form>
     </div>
     {% else %}
     <div class="text-slate-400 text-sm">{{ t("history_empty", lang) }}</div>
