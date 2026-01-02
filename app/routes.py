@@ -23,6 +23,7 @@ from .auth import (
     validate_csrf_token,
 )
 from .database import get_session
+from .settings import get_settings
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
 from .models import Cat, TaskEvent, TaskType
 
@@ -131,6 +132,25 @@ def ensure_csrf_token(request: Request) -> str:
         token = generate_csrf_token()
         request.session["csrf_token"] = token
     return token
+
+
+def api_key_user(request: Request) -> str | None:
+    """Return an API user if the X-API-Key header matches configured key."""
+    api_key = get_settings().api_key
+    if not api_key:
+        return None
+    header_key = request.headers.get("X-API-Key")
+    if header_key and secrets.compare_digest(header_key, api_key):
+        return get_settings().api_user or "api"
+    return None
+
+
+def require_user_or_api(request: Request) -> str:
+    """Allow API key auth as a fallback to session user."""
+    api_user = api_key_user(request)
+    if api_user:
+        return api_user
+    return require_user(request)
 
 
 def parse_date_param(raw_value: str | None, field_name: str) -> date | None:
@@ -656,7 +676,7 @@ def qr_landing(
     auto: int = 0,
     note: str | None = None,
     cat_id: int | None = Query(None),
-    user: str = Depends(require_user),
+    user: str = Depends(require_user_or_api),
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
@@ -678,25 +698,36 @@ def qr_landing(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cat selection")
 
     if auto == 1:
-        raise HTTPException(
-            status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
-            detail="Auto logging requires POST with a valid CSRF token",
+        cat = validate_cat_for_task(session, task, parsed_cat_id)
+        event = create_event(session, task, user, note, source="qr", cat_id=cat.id if cat else None)
+        response = templates.TemplateResponse(
+            "qr_confirm.html",
+            {
+                "request": request,
+                "task": task,
+                "event": event,
+                "auto": True,
+                "message": translate("confirm_message_logged", lang),
+                "lang": lang,
+                "user": user,
+                "cat": cat,
+            },
         )
-
-    response = templates.TemplateResponse(
-        "qr_confirm.html",
-        {
-            "request": request,
-            "task": task,
-            "event": None,
-            "auto": False,
-            "note": note,
-            "lang": lang,
-            "user": user,
-            "cats": active_cats,
-            "selected_cat": selected_cat,
-        },
-    )
+    else:
+        response = templates.TemplateResponse(
+            "qr_confirm.html",
+            {
+                "request": request,
+                "task": task,
+                "event": None,
+                "auto": False,
+                "note": note,
+                "lang": lang,
+                "user": user,
+                "cats": active_cats,
+                "selected_cat": selected_cat,
+            },
+        )
     if request.query_params.get("lang"):
         response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
     return response

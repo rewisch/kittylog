@@ -42,4 +42,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   });
+
+  // Toggle cat edit panels
+  document.body.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-cat-toggle-target]");
+    if (!toggle) return;
+    const targetId = toggle.getAttribute("data-cat-toggle-target");
+    if (!targetId) return;
+    const panel = document.getElementById(targetId);
+    if (!panel) return;
+    panel.classList.toggle("hidden");
+    const openText = toggle.getAttribute("data-cat-toggle-open") || toggle.textContent;
+    const closeText = toggle.getAttribute("data-cat-toggle-close") || toggle.textContent;
+    const isOpen = !panel.classList.contains("hidden");
+    toggle.textContent = isOpen ? closeText : openText;
+  });
 });

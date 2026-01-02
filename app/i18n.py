@@ -88,6 +88,8 @@ TRANSLATIONS: TranslationDict = {
         "all_cats": "All cats",
         "filter_cat": "Cat",
         "select_cat_required": "Please select a cat",
+        "edit_cat": "Edit",
+        "close_edit": "Close",
     },
     "de": {
         "app_tagline": "QR-Tracker für Katzenpflege",
@@ -167,6 +169,8 @@ TRANSLATIONS: TranslationDict = {
         "all_cats": "Alle Katzen",
         "filter_cat": "Katze",
         "select_cat_required": "Bitte eine Katze auswählen",
+        "edit_cat": "Bearbeiten",
+        "close_edit": "Schließen",
     },
 }
 
