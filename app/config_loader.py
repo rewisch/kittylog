@@ -48,7 +48,9 @@ def load_task_configs(path: Path) -> list[TaskConfig]:
     tasks: Iterable[dict] = data.get("tasks", [])
     configs: List[TaskConfig] = []
     used_colors: set[str] = set()
+    seen_slugs: set[str] = set()
     for idx, item in enumerate(tasks):
+        _validate_task_item(item, idx)
         raw_order = item.get("order", idx)
         try:
             order_value = int(raw_order)
@@ -56,9 +58,13 @@ def load_task_configs(path: Path) -> list[TaskConfig]:
             order_value = idx
         preferred_color = str(item.get("color", "")).strip()
         color = _assign_color(preferred_color, used_colors, idx)
+        slug = str(item["slug"])
+        if slug in seen_slugs:
+            raise ValueError(f"Duplicate task slug '{slug}' in tasks.yml")
+        seen_slugs.add(slug)
         configs.append(
             TaskConfig(
-                slug=str(item["slug"]),
+                slug=slug,
                 name=str(item["name"]),
                 icon=str(item.get("icon", "🐾")),
                 color=color,
@@ -70,6 +76,7 @@ def load_task_configs(path: Path) -> list[TaskConfig]:
 
 def sync_task_types(session: Session, configs: list[TaskConfig]) -> None:
     """Create or update TaskType rows from config."""
+    config_slugs = {c.slug for c in configs}
     for config in configs:
         existing = session.exec(select(TaskType).where(TaskType.slug == config.slug)).first()
         if existing is None:
@@ -88,6 +95,12 @@ def sync_task_types(session: Session, configs: list[TaskConfig]) -> None:
             existing.icon = config.icon
             existing.color = config.color
             existing.sort_order = config.order
+            existing.is_active = True
+
+    # Deactivate tasks not present in config
+    for task in session.exec(select(TaskType)).all():
+        if task.slug not in config_slugs and task.is_active:
+            task.is_active = False
     session.commit()
 
 
@@ -104,3 +117,21 @@ def _assign_color(preferred: str, used_colors: set[str], index: int) -> str:
     fallback = COLOR_PALETTE[index % len(COLOR_PALETTE)]
     used_colors.add(fallback)
     return fallback
+
+
+def _validate_task_item(item: dict[str, Any], index: int) -> None:
+    """Validate one task config entry."""
+    required_fields = ("slug", "name")
+    for field in required_fields:
+        if field not in item or item[field] in (None, ""):
+            raise ValueError(f"tasks[{index}] missing required field '{field}'")
+    if not isinstance(item.get("slug"), (str, int, float)):
+        raise ValueError(f"tasks[{index}].slug must be a string")
+    if not isinstance(item.get("name"), (str, int, float)):
+        raise ValueError(f"tasks[{index}].name must be a string")
+    if "order" in item:
+        raw_order = item["order"]
+        try:
+            int(raw_order)
+        except (TypeError, ValueError):
+            raise ValueError(f"tasks[{index}].order must be an integer")
