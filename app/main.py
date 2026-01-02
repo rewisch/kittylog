@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlmodel import Session
 
 from .config_loader import load_task_configs, sync_task_types
-from .database import create_db_and_tables, engine
+from .database import configure_engine, create_db_and_tables, get_engine
 from .routes import router
 from .settings import load_settings
 
@@ -37,12 +37,13 @@ app.mount(
 
 @app.on_event("startup")
 def on_startup() -> None:
-    create_db_and_tables()
     settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.yml"
-    load_settings(settings_path)
+    settings = load_settings(settings_path)
+    configure_engine(settings.db_path)
+    create_db_and_tables()
     config_path = Path(__file__).resolve().parent.parent / "config" / "tasks.yml"
     configs = load_task_configs(config_path)
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         sync_task_types(session, configs)
 
 
