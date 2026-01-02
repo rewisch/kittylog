@@ -70,12 +70,12 @@
     <div class="{{ state_class }} rounded-2xl p-3 flex items-center gap-3 shadow-lg shadow-black/40">
         <div class="h-12 w-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl">{{ task.icon if task else "🐾" }}</div>
         <div class="flex-1">
-            <p class="font-semibold">{{ task.name if task else ( "Unknown task" if lang == "en" else "Unbekannte Aufgabe") }}</p>
-            <p class="text-slate-400 text-sm">{{ ev.note or ("No note" if lang == "en" else "Keine Notiz") }}</p>
+            <p class="font-semibold">{{ task.name if task else t("unknown_task", lang) }}</p>
+            <p class="text-slate-400 text-sm">{{ ev.note or t("no_note", lang) }}</p>
         </div>
         <div class="text-right text-sm">
             <p class="text-slate-200">{{ humanize(ev.timestamp, lang) }}</p>
-            <p class="text-slate-500">{{ ev.who or ("Anon" if lang == "en" else "Anonym") }} · {{ ev.source or "web" }}</p>
+            <p class="text-slate-500">{{ ev.who or t("anonymous", lang) }} · {{ ev.source or "web" }}</p>
         </div>
         <form method="post" action="/history/{{ ev.id }}/delete?lang={{ lang }}{% if selected_task %}&task={{ selected_task }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}{% if page %}&page={{ page }}{% endif %}" class="self-start">
             <button type="submit" onclick="return confirm('{{ t('delete_confirm', lang) }}');" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-xs text-slate-200">

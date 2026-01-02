@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .auth import authenticate_user
+from .auth import authenticate_user, check_rate_limit, log_auth_event
 from .database import get_session
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
 from .models import TaskEvent, TaskType
@@ -136,10 +136,27 @@ def login_submit(
     next: str = Form("/"),
 ) -> Any:
     lang = resolve_language(request)
+    client_ip = request.client.host if request.client else "unknown"
+    rate_key = f"{client_ip}:{username}"
+    if not check_rate_limit(rate_key):
+        log_auth_event(username, client_ip, False, reason="rate_limit")
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "lang": lang,
+                "next": next,
+                "error": translate("login_rate_limited", lang),
+                "user": None,
+            },
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
     if authenticate_user(username, password):
         request.session["user"] = username
+        log_auth_event(username, client_ip, True)
         redirect_target = next if str(next).startswith("/") else "/"
         return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
+    log_auth_event(username, client_ip, False, reason="invalid_credentials")
     return templates.TemplateResponse(
         "login.html",
         {

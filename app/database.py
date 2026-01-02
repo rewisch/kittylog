@@ -16,6 +16,7 @@ def configure_engine(db_path: Path | str | None = None) -> Engine:
     """Configure the global engine, defaulting to the configured DB path."""
     global engine
     target_path = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
+    ensure_db_path_writable(target_path)
     engine = create_engine(
         f"sqlite:///{target_path}",
         connect_args={"check_same_thread": False},
@@ -62,3 +63,14 @@ def _ensure_legacy_columns(target_engine: Engine) -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE taskevent ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT 0"
             )
+
+
+def ensure_db_path_writable(db_path: Path) -> None:
+    """Ensure database directory is writable; raise with a clear error otherwise."""
+    db_path = Path(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with db_path.open("a", encoding="utf-8"):
+            pass
+    except OSError as exc:  # pragma: no cover - environmental
+        raise RuntimeError(f"Database path '{db_path}' is not writable: {exc}") from exc
