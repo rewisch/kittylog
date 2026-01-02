@@ -5,8 +5,15 @@
     <div class="bg-slate-900/80 border border-white/5 rounded-3xl p-8 shadow-2xl shadow-black/50 {% if event %}shimmer{% endif %}">
         <div class="mx-auto h-16 w-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-3xl mb-4 {% if event %}glow-pulse{% endif %}">{{ task.icon if task else "🐾" }}</div>
         <h1 class="text-2xl font-semibold mb-2">{{ task.name if task else "Task" }}</h1>
+        {% set cat_obj = cat if cat is defined else (selected_cat if selected_cat is defined else None) %}
         {% if event %}
             <p class="text-emerald-300 font-semibold mb-1">{{ message or t("confirm_message_logged", lang) }}</p>
+            {% if cat_obj %}
+            <p class="text-slate-200">{{ cat_obj.name }}</p>
+            {% if cat_obj.photo_path %}
+            <img src="{{ cat_obj.photo_path }}" alt="{{ cat_obj.name }}" class="mx-auto h-20 w-20 object-cover rounded-full border border-white/10 mb-2">
+            {% endif %}
+            {% endif %}
             <p class="text-slate-400 text-sm mb-6">{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC · {{ event.who or ("Anon" if lang == "en" else "Anonym") }}</p>
             <a href="/?lang={{ lang }}" class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10">{{ t("back_to_dashboard", lang) }}</a>
         {% else %}
@@ -14,7 +21,21 @@
             <form method="post" action="/q/{{ task.slug }}/confirm?lang={{ lang }}" class="space-y-3">
                 <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token') }}">
                 {% if note %}<input type="hidden" name="note" value="{{ note }}">{% endif %}
-                <button type="submit" class="w-full bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-emerald-500/25">{{ t("confirm_cta", lang) }}</button>
+                {% if task.requires_cat %}
+                    {% if cats %}
+                    <select name="cat_id" required data-required-label="{{ t('select_cat_required', lang) }}" class="w-full bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                        <option value="" {% if not selected_cat %}selected{% endif %} disabled>{{ t("select_cat_required", lang) }}</option>
+                        {% for c in cats %}
+                        <option value="{{ c.id }}" {% if selected_cat and selected_cat.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <div class="text-amber-200 text-sm bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2">
+                        {{ t("no_cats_available", lang) }}
+                    </div>
+                    {% endif %}
+                {% endif %}
+                <button type="submit" class="w-full bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-emerald-500/25 disabled:opacity-60 disabled:cursor-not-allowed" {% if task.requires_cat and not cats %}disabled{% endif %}>{{ t("confirm_cta", lang) }}</button>
                 <p class="text-xs text-slate-500">{{ t("confirm_hint", lang) }}</p>
             </form>
         {% endif %}

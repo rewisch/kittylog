@@ -5,21 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KittyLog</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script src="/static/js/config.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/custom.css">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { display: ['"Space Grotesk"', 'ui-sans-serif', 'system-ui'] },
-                    colors: {
-                        midnight: '#0b1224',
-                    },
-                }
-            }
-        }
-    </script>
     <script src="/static/js/main.js" defer></script>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 font-display">
@@ -37,6 +26,7 @@
                 <nav class="flex items-center gap-3 text-sm">
                     <a href="/?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_dashboard", lang) }}</a>
                     <a href="/history?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_history", lang) }}</a>
+                    <a href="/cats?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_cats", lang) }}</a>
                     <div class="flex items-center gap-1 text-xs text-slate-400">
                         {% for code in supported_langs %}
                         <a href="{{ request.url.path }}?lang={{ code }}" class="px-3 py-2 rounded-lg border border-white/5 hover:border-white/20 {{ 'bg-white/10 text-slate-100' if lang==code else 'text-slate-400' }}">{{ code.upper() }}</a>

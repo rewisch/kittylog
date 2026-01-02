@@ -34,3 +34,9 @@ tasks:
     order: 7
     icon: "💧"
     color: "amber"
+  - slug: "medicine"
+    name: "Medizin"
+    order: 8
+    icon: "💊"
+    color: "rose"
+    requires_cat: true

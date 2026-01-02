@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 import io
 import csv
+import secrets
+import shutil
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -22,7 +24,7 @@ from .auth import (
 )
 from .database import get_session
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
-from .models import TaskEvent, TaskType
+from .models import Cat, TaskEvent, TaskType
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -30,6 +32,7 @@ templates.env.globals["t"] = translate
 templates.env.globals["supported_langs"] = SUPPORTED_LANGS
 router = APIRouter()
 PER_PAGE = 20
+CAT_UPLOAD_DIR = Path(__file__).parent / "static" / "uploads" / "cats"
 
 
 def require_user(request: Request) -> str:
@@ -43,6 +46,78 @@ def require_user(request: Request) -> str:
         next_url = f"{next_url}?{request.url.query}"
     login_url = f"/login?next={quote(next_url, safe='')}"
     raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": login_url})
+
+
+def safe_redirect_target(target: str | None, default: str = "/") -> str:
+    """Return a path-only redirect target, falling back to default."""
+    if not target:
+        return default
+    target = str(target).strip()
+    if target.startswith("//"):
+        return default
+    parsed = urlparse(target)
+    if parsed.scheme or parsed.netloc:
+        return default
+    if not target.startswith("/"):
+        return default
+    return target
+
+
+def parse_cat_id(raw_value: str | int | None) -> int | None:
+    """Convert cat id input to an int or None, raising for invalid values."""
+    if raw_value is None:
+        return None
+    value_str = str(raw_value).strip()
+    if not value_str:
+        return None
+    try:
+        value = int(value_str)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cat selection")
+    if value <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cat selection")
+    return value
+
+
+def parse_birthday(raw_value: str | None) -> date | None:
+    """Parse optional birthday string into a date."""
+    if raw_value is None:
+        return None
+    value = raw_value.strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid birthday")
+
+
+def validate_cat_for_task(session: Session, task: TaskType, cat_id: int | None) -> Cat | None:
+    """Ensure cat selection aligns with task requirements."""
+    if task.requires_cat and cat_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cat required for this task")
+    if cat_id is None:
+        return None
+    cat = session.exec(select(Cat).where(Cat.id == cat_id)).first()
+    if cat is None or not cat.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cat for this task")
+    return cat
+
+
+def _save_cat_photo(photo: UploadFile | None) -> str | None:
+    """Persist uploaded cat photo and return its static path."""
+    if photo is None or not photo.filename:
+        return None
+    if photo.content_type and not photo.content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cat photo must be an image")
+    suffix = Path(photo.filename).suffix or ".jpg"
+    filename = f"{secrets.token_hex(8)}{suffix}"
+    CAT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    dest_path = CAT_UPLOAD_DIR / filename
+    photo.file.seek(0)
+    with dest_path.open("wb") as buffer:
+        shutil.copyfileobj(photo.file, buffer)
+    return f"/static/uploads/cats/{filename}"
 
 
 def current_user(request: Request) -> str | None:
@@ -111,9 +186,11 @@ def create_event(
     who: str | None,
     note: str | None,
     source: str,
+    cat_id: int | None = None,
 ) -> TaskEvent:
     event = TaskEvent(
         task_type_id=task.id,
+        cat_id=cat_id,
         who=who or None,
         note=note or None,
         source=source,
@@ -129,7 +206,7 @@ def login_form(request: Request, next: str = Query("/")) -> Any:
     lang = resolve_language(request)
     existing_user = current_user(request)
     if existing_user:
-        redirect_target = next if str(next).startswith("/") else "/"
+        redirect_target = safe_redirect_target(next)
         return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
     request.session["csrf_token"] = generate_csrf_token()
     return templates.TemplateResponse(
@@ -174,7 +251,7 @@ def login_submit(
     if authenticate_user(username, password):
         request.session["user"] = username
         log_auth_event(username, client_ip, True)
-        redirect_target = next if str(next).startswith("/") else "/"
+        redirect_target = safe_redirect_target(next)
         return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
     log_auth_event(username, client_ip, False, reason="invalid_credentials")
     return templates.TemplateResponse(
@@ -198,7 +275,7 @@ def logout(
 ) -> RedirectResponse:
     if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
-    redirect_target = next if str(next).startswith("/") else "/login"
+    redirect_target = safe_redirect_target(next, default="/login")
     request.session.clear()
     response = RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("kittylog_session")
@@ -213,6 +290,12 @@ def dashboard(
 ) -> Any:
     lang = resolve_language(request)
     ensure_csrf_token(request)
+    all_cats = session.exec(
+        select(Cat)
+        .order_by(Cat.is_active.desc(), Cat.name)
+    ).all()
+    cats = [c for c in all_cats if c.is_active]
+    cat_map = {c.id: c for c in all_cats}
     tasks = session.exec(
         select(TaskType)
         .where(TaskType.is_active == True)
@@ -232,6 +315,8 @@ def dashboard(
             "request": request,
             "tasks": tasks,
             "last_events": last_events,
+            "cats": cats,
+            "cat_map": cat_map,
             "humanize": humanize_timestamp,
             "recency_state": recency_state,
             "lang": lang,
@@ -243,10 +328,134 @@ def dashboard(
     return response
 
 
+@router.get("/cats", response_class=HTMLResponse)
+def cats_page(
+    request: Request,
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Any:
+    lang = resolve_language(request)
+    ensure_csrf_token(request)
+    cats = session.exec(
+        select(Cat).order_by(Cat.is_active.desc(), Cat.name)
+    ).all()
+    response = templates.TemplateResponse(
+        "cats.html",
+        {
+            "request": request,
+            "cats": cats,
+            "lang": lang,
+            "user": user,
+        },
+    )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
+@router.post("/cats", response_class=HTMLResponse)
+def create_cat(
+    request: Request,
+    name: str = Form(...),
+    color: str = Form(""),
+    birthday: str = Form(""),
+    chip_id: str = Form(""),
+    photo: UploadFile | None = File(None),
+    csrf_token: str = Form(""),
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required")
+    birthday_value = parse_birthday(birthday)
+    photo_path = _save_cat_photo(photo)
+    cat = Cat(
+        name=clean_name,
+        color=color.strip() or None,
+        birthday=birthday_value,
+        chip_id=chip_id.strip() or None,
+        photo_path=photo_path,
+        is_active=True,
+    )
+    session.add(cat)
+    session.commit()
+    redirect_url = f"/cats?lang={lang}"
+    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
+@router.post("/cats/{cat_id}/update", response_class=HTMLResponse)
+def update_cat(
+    request: Request,
+    cat_id: int,
+    name: str = Form(...),
+    color: str = Form(""),
+    birthday: str = Form(""),
+    chip_id: str = Form(""),
+    is_active: bool = Form(False),
+    photo: UploadFile | None = File(None),
+    csrf_token: str = Form(""),
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
+    cat = session.exec(select(Cat).where(Cat.id == cat_id)).first()
+    if cat is None:
+        raise HTTPException(status_code=404, detail="Cat not found")
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required")
+    cat.name = clean_name
+    cat.color = color.strip() or None
+    cat.birthday = parse_birthday(birthday)
+    cat.chip_id = chip_id.strip() or None
+    cat.is_active = bool(is_active)
+    new_photo = _save_cat_photo(photo)
+    if new_photo:
+        cat.photo_path = new_photo
+    session.add(cat)
+    session.commit()
+    redirect_url = f"/cats?lang={lang}"
+    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
+@router.post("/cats/{cat_id}/delete")
+def delete_cat(
+    request: Request,
+    cat_id: int,
+    csrf_token: str = Form(""),
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
+    cat = session.exec(select(Cat).where(Cat.id == cat_id)).first()
+    if cat is None:
+        raise HTTPException(status_code=404, detail="Cat not found")
+    cat.is_active = False
+    session.add(cat)
+    session.commit()
+    redirect_url = f"/cats?lang={lang}"
+    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
 @router.get("/history", response_class=HTMLResponse)
 def history(
     request: Request,
     task: str | None = Query(None),
+    cat: int | None = Query(None),
     start_date: str | None = Query(None),
     end_date: str | None = Query(None),
     preset: str | None = Query(None, pattern="^(today|7d|30d)$"),
@@ -260,6 +469,9 @@ def history(
     base_query = select(TaskEvent).where(TaskEvent.deleted == False)  # noqa: E712
     if task:
         base_query = base_query.join(TaskType).where(TaskType.slug == task)
+    selected_cat_id = parse_cat_id(cat)
+    if selected_cat_id:
+        base_query = base_query.where(TaskEvent.cat_id == selected_cat_id)
     start_date_value = parse_date_param(start_date, "start_date")
     end_date_value = parse_date_param(end_date, "end_date")
     if preset and not start_date_value and not end_date_value:
@@ -288,18 +500,22 @@ def history(
             select(TaskType).order_by(TaskType.sort_order, TaskType.name)
         ).all()
         task_map = {t.id: t for t in task_types}
+        cats = session.exec(select(Cat)).all()
+        cat_map = {c.id: c for c in cats}
 
         def _iter_rows() -> Any:
             buffer = io.StringIO()
             writer = csv.writer(buffer)
-            writer.writerow(["timestamp", "task_slug", "task_name", "who", "note", "source"])
+            writer.writerow(["timestamp", "task_slug", "task_name", "cat_name", "who", "note", "source"])
             for ev in all_events:
                 task = task_map.get(ev.task_type_id)
+                cat = cat_map.get(ev.cat_id) if ev.cat_id else None
                 writer.writerow(
                     [
                         ev.timestamp.isoformat(),
                         task.slug if task else "",
                         task.name if task else "",
+                        cat.name if cat else "",
                         ev.who or "",
                         ev.note or "",
                         ev.source or "",
@@ -321,9 +537,12 @@ def history(
     offset = (page - 1) * PER_PAGE
     events = session.exec(query.offset(offset).limit(PER_PAGE)).all()
     task_types = session.exec(select(TaskType).order_by(TaskType.sort_order, TaskType.name)).all()
+    cats = session.exec(select(Cat).order_by(Cat.is_active.desc(), Cat.name)).all()
     task_map = {t.id: t for t in task_types}
+    cat_map = {c.id: c for c in cats}
     filter_values = {
         "task": task,
+        "cat": selected_cat_id or "",
         "start_date": start_date_value.isoformat() if start_date_value else "",
         "end_date": end_date_value.isoformat() if end_date_value else "",
         "preset": preset,
@@ -332,23 +551,26 @@ def history(
     response = templates.TemplateResponse(
         "history.html",
         {
-            "request": request,
-        "events": events,
-        "tasks": task_types,
-        "task_map": task_map,
-        "selected_task": task,
-        "start_date": start_date_value,
-        "end_date": end_date_value,
-        "preset": preset,
-        "page": page,
-        "per_page": PER_PAGE,
-        "total_count": total_count,
-        "filter_values": filter_values,
-        "humanize": humanize_timestamp,
-        "recency_state": recency_state,
-        "lang": lang,
-        "user": user,
-    },
+        "request": request,
+            "events": events,
+            "tasks": task_types,
+            "task_map": task_map,
+            "cats": cats,
+            "cat_map": cat_map,
+            "selected_task": task,
+            "selected_cat": selected_cat_id,
+            "start_date": start_date_value,
+            "end_date": end_date_value,
+            "preset": preset,
+            "page": page,
+            "per_page": PER_PAGE,
+            "total_count": total_count,
+            "filter_values": filter_values,
+            "humanize": humanize_timestamp,
+            "recency_state": recency_state,
+            "lang": lang,
+            "user": user,
+        },
     )
     request.session.setdefault("csrf_token", generate_csrf_token())
     if request.query_params.get("lang"):
@@ -393,6 +615,7 @@ def log_task(
     slug: str = Form(...),
     who: str | None = Form(None),
     note: str | None = Form(None),
+    cat_id: str | None = Form(None),
     csrf_token: str = Form(""),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
@@ -405,7 +628,9 @@ def log_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     actor = who or user
-    event = create_event(session, task, actor, note, source="web")
+    cat_id_value = parse_cat_id(cat_id)
+    cat = validate_cat_for_task(session, task, cat_id_value)
+    event = create_event(session, task, actor, note, source="web", cat_id=cat.id if cat else None)
     response = templates.TemplateResponse(
         "qr_confirm.html",
         {
@@ -416,6 +641,7 @@ def log_task(
             "message": translate("confirm_message_logged", lang),
             "lang": lang,
             "user": user,
+            "cat": cat,
         },
     )
     if request.query_params.get("lang"):
@@ -429,6 +655,7 @@ def qr_landing(
     task_slug: str,
     auto: int = 0,
     note: str | None = None,
+    cat_id: int | None = Query(None),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
@@ -438,23 +665,23 @@ def qr_landing(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    active_cats = session.exec(
+        select(Cat)
+        .where(Cat.is_active == True)  # noqa: E712
+        .order_by(Cat.name)
+    ).all()
+    selected_cat = None
+    parsed_cat_id = parse_cat_id(cat_id)
+    if parsed_cat_id:
+        selected_cat = session.exec(select(Cat).where(Cat.id == parsed_cat_id)).first()
+        if selected_cat is None or not selected_cat.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cat selection")
+
     if auto == 1:
-        event = create_event(session, task, user, note, source="qr")
-        response = templates.TemplateResponse(
-            "qr_confirm.html",
-            {
-                "request": request,
-                "task": task,
-                "event": event,
-                "auto": True,
-                "message": translate("confirm_message_logged", lang),
-                "lang": lang,
-                "user": user,
-            },
+        raise HTTPException(
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+            detail="Auto logging requires POST with a valid CSRF token",
         )
-        if request.query_params.get("lang"):
-            response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
-        return response
 
     response = templates.TemplateResponse(
         "qr_confirm.html",
@@ -466,6 +693,8 @@ def qr_landing(
             "note": note,
             "lang": lang,
             "user": user,
+            "cats": active_cats,
+            "selected_cat": selected_cat,
         },
     )
     if request.query_params.get("lang"):
@@ -478,6 +707,7 @@ def qr_confirm(
     request: Request,
     task_slug: str,
     note: str | None = Form(None),
+    cat_id: str | None = Form(None),
     csrf_token: str = Form(""),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
@@ -489,7 +719,9 @@ def qr_confirm(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    event = create_event(session, task, user, note, source="qr")
+    cat_id_value = parse_cat_id(cat_id)
+    cat = validate_cat_for_task(session, task, cat_id_value)
+    event = create_event(session, task, user, note, source="qr", cat_id=cat.id if cat else None)
     response = templates.TemplateResponse(
         "qr_confirm.html",
         {
@@ -500,6 +732,7 @@ def qr_confirm(
             "message": translate("confirm_message_logged", lang),
             "lang": lang,
             "user": user,
+            "cat": cat,
         },
     )
     if request.query_params.get("lang"):

@@ -29,8 +29,21 @@
         </div>
         <div class="mt-4 text-sm text-slate-300">
             {% if ev %}
+                {% set cat = cat_map.get(ev.cat_id) if cat_map else None %}
                 <p class="font-semibold">{{ humanize(ev.timestamp, lang) }} · {{ ev.who or ("someone" if lang == "en" else "jemand") }}</p>
-                {% if ev.note %}<p class="text-slate-400">“{{ ev.note }}”</p>{% endif %}
+                <div class="text-slate-400 flex items-center gap-2 flex-wrap">
+                    {% if cat %}
+                    <span class="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-white/5 border border-white/10 text-xs">
+                        {% if cat.photo_path %}
+                        <img src="{{ cat.photo_path }}" alt="{{ cat.name }}" class="h-6 w-6 rounded-full object-cover border border-white/10">
+                        {% else %}
+                        <span class="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center text-[0.7rem] border border-white/10">{{ cat.name[:1] }}</span>
+                        {% endif %}
+                        <span>{{ cat.name }}</span>
+                    </span>
+                    {% endif %}
+                    {% if ev.note %}<span>“{{ ev.note }}”</span>{% endif %}
+                </div>
             {% else %}
                 <p class="text-slate-400">{{ t("not_logged_yet", lang) }}</p>
             {% endif %}
@@ -38,11 +51,27 @@
         <form method="post" action="/log?lang={{ lang }}" class="mt-4 space-y-3">
             <input type="hidden" name="slug" value="{{ task.slug }}">
             <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token') }}">
+            {% if task.requires_cat %}
+                {% if cats %}
+                <div class="grid grid-cols-1 gap-2 text-sm">
+                    <select name="cat_id" required data-required-label="{{ t('select_cat_required', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
+                        <option value="" selected disabled>{{ t("select_cat_required", lang) }}</option>
+                        {% for cat in cats %}
+                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% else %}
+                <div class="text-amber-200 text-sm bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2">
+                    {{ t("no_cats_available", lang) }}
+                </div>
+                {% endif %}
+            {% endif %}
             <div class="grid grid-cols-2 gap-2 text-sm">
                 <input name="who" value="{{ user }}" placeholder="{{ t('log_form_who', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
                 <input name="note" placeholder="{{ t('log_form_note', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
             </div>
-            <button type="submit" class="w-full bg-{{ task.color }}-500/90 hover:bg-{{ task.color }}-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-{{ task.color }}-500/20">{{ t("log_now", lang) }}</button>
+            <button type="submit" class="w-full bg-{{ task.color }}-500/90 hover:bg-{{ task.color }}-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-{{ task.color }}-500/20 disabled:opacity-60 disabled:cursor-not-allowed" {% if task.requires_cat and not cats %}disabled{% endif %}>{{ t("log_now", lang) }}</button>
         </form>
     </div>
     {% endfor %}

@@ -32,10 +32,15 @@ tasks:
     order: 1
     icon: "🍽️"
     color: "blue"
+    requires_cat: true  # optional; forces selecting a cat when logging
 ```
 Fields: `slug` (unique), `name`, `order` (integer for sorting), `icon` (emoji/text), `color` (Tailwind color name), `is_active` (optional; defaults true). Edits sync on startup; removed tasks aren’t deleted from DB.
 
 Colors: If you omit `color` (or repeat colors), the app assigns unique colors per task from this palette: `amber`, `blue`, `cyan`, `emerald`, `fuchsia`, `green`, `indigo`, `lime`, `orange`, `pink`, `purple`, `red`, `rose`, `sky`, `teal`, `violet`, `yellow`.
+
+## Cats
+- Manage cats at `/cats` (name, color, birthday, chip ID, optional photo, active flag).
+- When a task has `requires_cat: true` in `config/tasks.yml`, the dashboard and QR flow require selecting a cat; logging is rejected if no cat is provided.
 
 ## App settings (`config/settings.yml`)
 ```yaml

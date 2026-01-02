@@ -56,12 +56,22 @@ def _ensure_legacy_columns(target_engine: Engine) -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE tasktype ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
             )
+    if "requires_cat" not in tasktype_columns:
+        with target_engine.begin() as conn:
+            conn.exec_driver_sql(
+                "ALTER TABLE tasktype ADD COLUMN requires_cat BOOLEAN NOT NULL DEFAULT 0"
+            )
 
     taskevent_columns = [col["name"] for col in inspector.get_columns("taskevent")]
     if "deleted" not in taskevent_columns:
         with target_engine.begin() as conn:
             conn.exec_driver_sql(
                 "ALTER TABLE taskevent ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT 0"
+            )
+    if "cat_id" not in taskevent_columns:
+        with target_engine.begin() as conn:
+            conn.exec_driver_sql(
+                "ALTER TABLE taskevent ADD COLUMN cat_id INTEGER"
             )
 
 

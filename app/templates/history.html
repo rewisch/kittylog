@@ -8,17 +8,23 @@
         <p class="text-slate-400 text-sm">{{ t("history_subtitle", lang) }}</p>
     </div>
     <div class="flex items-center gap-2">
-        <a href="/history?lang={{ lang }}&format=csv{% if selected_task %}&task={{ selected_task }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5 text-sm">{{ t("export_csv", lang) }}</a>
+        <a href="/history?lang={{ lang }}&format=csv{% if selected_task %}&task={{ selected_task }}{% endif %}{% if selected_cat %}&cat={{ selected_cat }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5 text-sm">{{ t("export_csv", lang) }}</a>
     </div>
 </div>
 
 <div class="space-y-3 mb-4">
-    <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+    <form method="get" class="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
         <input type="hidden" name="lang" value="{{ lang }}">
         <select name="task" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
             <option value="">{{ t("all_tasks", lang) }}</option>
             {% for t in tasks %}
             <option value="{{ t.slug }}" {% if selected_task == t.slug %}selected{% endif %}>{{ t.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="cat" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+            <option value="">{{ t("all_cats", lang) }}</option>
+            {% for c in cats %}
+            <option value="{{ c.id }}" {% if selected_cat == c.id %}selected{% endif %}>{{ c.name }}</option>
             {% endfor %}
         </select>
         <input type="date" name="start_date" value="{{ start_date }}" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40" placeholder="{{ t('start_date', lang) }}">
@@ -36,6 +42,7 @@
     </div>
     {% set active = [] %}
     {% if selected_task %}{% set _ = active.append({"key":"task","label":t("filter_task", lang) ~ ": " ~ selected_task}) %}{% endif %}
+    {% if selected_cat %}{% set _ = active.append({"key":"cat","label":t("filter_cat", lang) ~ ": " ~ (cat_map.get(selected_cat).name if cat_map.get(selected_cat) else selected_cat)}) %}{% endif %}
     {% if start_date %}{% set _ = active.append({"key":"start_date","label":t("filter_start", lang) ~ ": " ~ start_date}) %}{% endif %}
     {% if end_date %}{% set _ = active.append({"key":"end_date","label":t("filter_end", lang) ~ ": " ~ end_date}) %}{% endif %}
     {% if preset %}
@@ -49,6 +56,7 @@
         <form method="get" class="inline-flex">
             <input type="hidden" name="lang" value="{{ lang }}">
             {% if item.key != "task" and selected_task %}<input type="hidden" name="task" value="{{ selected_task }}">{% endif %}
+            {% if item.key != "cat" and selected_cat %}<input type="hidden" name="cat" value="{{ selected_cat }}">{% endif %}
             {% if item.key != "start_date" and start_date %}<input type="hidden" name="start_date" value="{{ start_date }}">{% endif %}
             {% if item.key != "end_date" and end_date %}<input type="hidden" name="end_date" value="{{ end_date }}">{% endif %}
             {% if item.key != "preset" and preset %}<input type="hidden" name="preset" value="{{ preset }}">{% endif %}
@@ -65,19 +73,32 @@
 <div class="space-y-3">
     {% for ev in events %}
     {% set task = task_map.get(ev.task_type_id) %}
+    {% set cat = cat_map.get(ev.cat_id) if ev.cat_id else None %}
     {% set state = recency_state(ev.timestamp) %}
     {% set state_class = "border-emerald-400/30 bg-emerald-500/5" if state=="fresh" else ("border-amber-400/30 bg-amber-500/5" if state=="warm" else "border-white/5 bg-slate-900/70") %}
     <div class="{{ state_class }} rounded-2xl p-3 flex items-center gap-3 shadow-lg shadow-black/40">
         <div class="h-12 w-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl">{{ task.icon if task else "🐾" }}</div>
         <div class="flex-1">
             <p class="font-semibold">{{ task.name if task else t("unknown_task", lang) }}</p>
-            <p class="text-slate-400 text-sm">{{ ev.note or t("no_note", lang) }}</p>
+            <div class="text-slate-400 text-sm flex items-center gap-2 flex-wrap">
+                {% if cat %}
+                <span class="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-white/5 border border-white/10 text-xs">
+                    {% if cat.photo_path %}
+                    <img src="{{ cat.photo_path }}" alt="{{ cat.name }}" class="h-6 w-6 rounded-full object-cover border border-white/10">
+                    {% else %}
+                    <span class="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center text-[0.7rem] border border-white/10">{{ cat.name[:1] }}</span>
+                    {% endif %}
+                    <span>{{ cat.name }}</span>
+                </span>
+                {% endif %}
+                <span>{{ ev.note or t("no_note", lang) }}</span>
+            </div>
         </div>
         <div class="text-right text-sm">
             <p class="text-slate-200">{{ humanize(ev.timestamp, lang) }}</p>
             <p class="text-slate-500">{{ ev.who or t("anonymous", lang) }} · {{ ev.source or "web" }}</p>
         </div>
-        <form method="post" action="/history/{{ ev.id }}/delete?lang={{ lang }}{% if selected_task %}&task={{ selected_task }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}{% if page %}&page={{ page }}{% endif %}" class="self-start">
+        <form method="post" action="/history/{{ ev.id }}/delete?lang={{ lang }}{% if selected_task %}&task={{ selected_task }}{% endif %}{% if selected_cat %}&cat={{ selected_cat }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}{% if page %}&page={{ page }}{% endif %}" class="self-start">
             <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token') }}">
             <button type="submit" data-confirm="{{ t('delete_confirm', lang) }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-xs text-slate-200">
                 {{ t("delete_entry", lang) }}
@@ -95,6 +116,7 @@
     <form method="get" class="flex items-center gap-2">
         <input type="hidden" name="lang" value="{{ lang }}">
         {% if selected_task %}<input type="hidden" name="task" value="{{ selected_task }}">{% endif %}
+        {% if selected_cat %}<input type="hidden" name="cat" value="{{ selected_cat }}">{% endif %}
         {% if start_date %}<input type="hidden" name="start_date" value="{{ start_date }}">{% endif %}
         {% if end_date %}<input type="hidden" name="end_date" value="{{ end_date }}">{% endif %}
         {% if preset %}<input type="hidden" name="preset" value="{{ preset }}">{% endif %}
@@ -105,6 +127,7 @@
     <form method="get" class="flex items-center gap-2">
         <input type="hidden" name="lang" value="{{ lang }}">
         {% if selected_task %}<input type="hidden" name="task" value="{{ selected_task }}">{% endif %}
+        {% if selected_cat %}<input type="hidden" name="cat" value="{{ selected_cat }}">{% endif %}
         {% if start_date %}<input type="hidden" name="start_date" value="{{ start_date }}">{% endif %}
         {% if end_date %}<input type="hidden" name="end_date" value="{{ end_date }}">{% endif %}
         {% if preset %}<input type="hidden" name="preset" value="{{ preset }}">{% endif %}

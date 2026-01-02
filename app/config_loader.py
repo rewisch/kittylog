@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import Any, Iterable, List
 
 import yaml
 from sqlmodel import Session, select
@@ -38,6 +38,7 @@ class TaskConfig:
     icon: str
     color: str = "blue"
     order: int = 0
+    requires_cat: bool = False
 
 
 def load_task_configs(path: Path) -> list[TaskConfig]:
@@ -69,6 +70,7 @@ def load_task_configs(path: Path) -> list[TaskConfig]:
                 icon=str(item.get("icon", "🐾")),
                 color=color,
                 order=order_value,
+                requires_cat=bool(item.get("requires_cat", False)),
             )
         )
     return configs
@@ -88,6 +90,7 @@ def sync_task_types(session: Session, configs: list[TaskConfig]) -> None:
                     color=config.color,
                     sort_order=config.order,
                     is_active=True,
+                    requires_cat=config.requires_cat,
                 )
             )
         else:
@@ -96,6 +99,7 @@ def sync_task_types(session: Session, configs: list[TaskConfig]) -> None:
             existing.color = config.color
             existing.sort_order = config.order
             existing.is_active = True
+            existing.requires_cat = config.requires_cat
 
     # Deactivate tasks not present in config
     for task in session.exec(select(TaskType)).all():
@@ -135,3 +139,5 @@ def _validate_task_item(item: dict[str, Any], index: int) -> None:
             int(raw_order)
         except (TypeError, ValueError):
             raise ValueError(f"tasks[{index}].order must be an integer")
+    if "requires_cat" in item and not isinstance(item.get("requires_cat"), bool):
+        raise ValueError(f"tasks[{index}].requires_cat must be a boolean")
