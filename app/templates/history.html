@@ -79,7 +79,7 @@
         </div>
         <form method="post" action="/history/{{ ev.id }}/delete?lang={{ lang }}{% if selected_task %}&task={{ selected_task }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}{% if page %}&page={{ page }}{% endif %}" class="self-start">
             <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token') }}">
-            <button type="submit" onclick="return confirm('{{ t('delete_confirm', lang) }}');" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-xs text-slate-200">
+            <button type="submit" data-confirm="{{ t('delete_confirm', lang) }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-xs text-slate-200">
                 {{ t("delete_entry", lang) }}
             </button>
         </form>
