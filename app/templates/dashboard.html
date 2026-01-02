@@ -7,19 +7,27 @@
     <p class="text-slate-400 text-sm">{{ t("dashboard_subtitle", lang) }}</p>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="tasks-grid">
     {% for task in tasks %}
-    <div class="bg-slate-900/70 border border-white/5 rounded-2xl p-4 shadow-lg shadow-black/40">
+    {% set ev = last_events.get(task.id) %}
+    {% set state = recency_state(ev.timestamp) if ev else "never" %}
+    {% set state_class = "border-emerald-400/30 shadow-emerald-500/10" if state=="fresh" else ("border-amber-400/30 shadow-amber-500/10" if state=="warm" else "border-white/5") %}
+    <div class="bg-slate-900/70 {{ state_class }} rounded-2xl p-4 shadow-lg shadow-black/40">
         <div class="flex items-start justify-between">
             <div class="flex items-center gap-3">
                 <div class="h-12 w-12 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl">{{ task.icon }}</div>
                 <div>
                     <p class="text-lg font-semibold">{{ task.name }}</p>
+                    {% if ev %}
+                    <div class="mt-1 inline-flex items-center gap-2 px-2 py-1 rounded-lg text-xs border border-white/5">
+                        <span class="h-2 w-2 rounded-full {{ 'bg-emerald-400' if state=='fresh' else ('bg-amber-300' if state=='warm' else 'bg-slate-500') }}"></span>
+                        <span class="text-slate-300">{{ humanize(ev.timestamp, lang) }}</span>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
         <div class="mt-4 text-sm text-slate-300">
-            {% set ev = last_events.get(task.id) %}
             {% if ev %}
                 <p class="font-semibold">{{ humanize(ev.timestamp, lang) }} · {{ ev.who or ("someone" if lang == "en" else "jemand") }}</p>
                 {% if ev.note %}<p class="text-slate-400">“{{ ev.note }}”</p>{% endif %}
@@ -30,12 +38,15 @@
         <form method="post" action="/log?lang={{ lang }}" class="mt-4 space-y-3">
             <input type="hidden" name="slug" value="{{ task.slug }}">
             <div class="grid grid-cols-2 gap-2 text-sm">
-                <input name="who" value="{{ user }}" placeholder="{{ t('log_form_who', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-2 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
-                <input name="note" placeholder="{{ t('log_form_note', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-2 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
+                <input name="who" value="{{ user }}" placeholder="{{ t('log_form_who', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
+                <input name="note" placeholder="{{ t('log_form_note', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
             </div>
-            <button type="submit" class="w-full bg-{{ task.color }}-500/90 hover:bg-{{ task.color }}-500 text-slate-950 font-semibold py-2.5 rounded-xl transition shadow-lg shadow-{{ task.color }}-500/20">{{ t("log_now", lang) }}</button>
+            <button type="submit" class="w-full bg-{{ task.color }}-500/90 hover:bg-{{ task.color }}-500 text-slate-950 font-semibold py-3 rounded-xl transition shadow-lg shadow-{{ task.color }}-500/20">{{ t("log_now", lang) }}</button>
         </form>
     </div>
     {% endfor %}
+</div>
+<div class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:hidden">
+    <a href="#tasks-grid" class="block text-center px-4 py-3 rounded-2xl bg-emerald-500 text-slate-950 font-semibold shadow-xl shadow-emerald-500/30">{{ t("log_now", lang) }}</a>
 </div>
 {% endblock %}

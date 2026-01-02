@@ -2,11 +2,11 @@
 
 {% block content %}
 <div class="max-w-xl mx-auto text-center">
-    <div class="bg-slate-900/80 border border-white/5 rounded-3xl p-8 shadow-2xl shadow-black/50">
-        <div class="mx-auto h-16 w-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-3xl mb-4">{{ task.icon if task else "🐾" }}</div>
+    <div class="bg-slate-900/80 border border-white/5 rounded-3xl p-8 shadow-2xl shadow-black/50 {% if event %}shimmer{% endif %}">
+        <div class="mx-auto h-16 w-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-3xl mb-4 {% if event %}glow-pulse{% endif %}">{{ task.icon if task else "🐾" }}</div>
         <h1 class="text-2xl font-semibold mb-2">{{ task.name if task else "Task" }}</h1>
         {% if event %}
-            <p class="text-emerald-300 font-semibold mb-1">{{ message or "Logged!" }}</p>
+            <p class="text-emerald-300 font-semibold mb-1">{{ message or t("confirm_message_logged", lang) }}</p>
             <p class="text-slate-400 text-sm mb-6">{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC · {{ event.who or ("Anon" if lang == "en" else "Anonym") }}</p>
             <a href="/?lang={{ lang }}" class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10">{{ t("back_to_dashboard", lang) }}</a>
         {% else %}
@@ -19,4 +19,9 @@
         {% endif %}
     </div>
 </div>
+{% if event %}
+<div class="toast bg-emerald-500 text-slate-950 px-4 py-3 rounded-xl font-semibold shadow-lg shadow-emerald-500/40" role="status" aria-live="polite">
+    {{ t("toast_logged", lang) }}
+</div>
+{% endif %}
 {% endblock %}

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+import io
+import csv
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .auth import authenticate_user
@@ -20,6 +23,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["t"] = translate
 templates.env.globals["supported_langs"] = SUPPORTED_LANGS
 router = APIRouter()
+PER_PAGE = 20
 
 
 def require_user(request: Request) -> str:
@@ -72,6 +76,18 @@ def humanize_timestamp(ts: datetime | None, lang: str = "en") -> str:
     days = delta.days
     suffix = "d ago" if lang == "en" else "Tg. her"
     return f"{days}{suffix if lang == 'en' else f' {suffix}'}"
+
+
+def recency_state(ts: datetime | None) -> str:
+    """Return recency bucket: fresh, warm, stale, never."""
+    if ts is None:
+        return "never"
+    delta = datetime.utcnow() - ts
+    if delta < timedelta(hours=6):
+        return "fresh"
+    if delta < timedelta(days=1):
+        return "warm"
+    return "stale"
 
 
 def create_event(
@@ -173,6 +189,7 @@ def dashboard(
             "tasks": tasks,
             "last_events": last_events,
             "humanize": humanize_timestamp,
+            "recency_state": recency_state,
             "lang": lang,
             "user": user,
         },
@@ -188,6 +205,9 @@ def history(
     task: str | None = Query(None),
     start_date: str | None = Query(None),
     end_date: str | None = Query(None),
+    preset: str | None = Query(None, pattern="^(today|7d|30d)$"),
+    page: int = Query(1, ge=1),
+    format: str | None = Query(None),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
@@ -197,6 +217,17 @@ def history(
         query = query.join(TaskType).where(TaskType.slug == task)
     start_date_value = parse_date_param(start_date, "start_date")
     end_date_value = parse_date_param(end_date, "end_date")
+    if preset and not start_date_value and not end_date_value:
+        today = date.today()
+        if preset == "today":
+            start_date_value = today
+            end_date_value = today
+        elif preset == "7d":
+            start_date_value = today - timedelta(days=6)
+            end_date_value = today
+        elif preset == "30d":
+            start_date_value = today - timedelta(days=29)
+            end_date_value = today
     if start_date_value:
         start_dt = datetime.combine(start_date_value, time.min)
         query = query.where(TaskEvent.timestamp >= start_dt)
@@ -204,24 +235,75 @@ def history(
         end_dt = datetime.combine(end_date_value, time.max)
         query = query.where(TaskEvent.timestamp <= end_dt)
 
-    events = session.exec(query).all()
+    if format == "csv":
+        all_events = session.exec(query).all()
+        task_types = session.exec(
+            select(TaskType).order_by(TaskType.sort_order, TaskType.name)
+        ).all()
+        task_map = {t.id: t for t in task_types}
+
+        def _iter_rows() -> Any:
+            buffer = io.StringIO()
+            writer = csv.writer(buffer)
+            writer.writerow(["timestamp", "task_slug", "task_name", "who", "note", "source"])
+            for ev in all_events:
+                task = task_map.get(ev.task_type_id)
+                writer.writerow(
+                    [
+                        ev.timestamp.isoformat(),
+                        task.slug if task else "",
+                        task.name if task else "",
+                        ev.who or "",
+                        ev.note or "",
+                        ev.source or "",
+                    ]
+                )
+            buffer.seek(0)
+            yield buffer.read()
+
+        filename = f"kittylog-history-page{page}.csv"
+        return StreamingResponse(
+            _iter_rows(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    total_count = session.exec(
+        select(func.count()).select_from(query.subquery())
+    ).one()
+    if isinstance(total_count, tuple):
+        total_count = total_count[0]
+    offset = (page - 1) * PER_PAGE
+    events = session.exec(query.offset(offset).limit(PER_PAGE)).all()
     task_types = session.exec(select(TaskType).order_by(TaskType.sort_order, TaskType.name)).all()
     task_map = {t.id: t for t in task_types}
+    filter_values = {
+        "task": task,
+        "start_date": start_date_value.isoformat() if start_date_value else "",
+        "end_date": end_date_value.isoformat() if end_date_value else "",
+        "preset": preset,
+    }
 
     response = templates.TemplateResponse(
         "history.html",
         {
             "request": request,
-            "events": events,
-            "tasks": task_types,
-            "task_map": task_map,
-            "selected_task": task,
-            "start_date": start_date_value,
-            "end_date": end_date_value,
-            "humanize": humanize_timestamp,
-            "lang": lang,
-            "user": user,
-        },
+        "events": events,
+        "tasks": task_types,
+        "task_map": task_map,
+        "selected_task": task,
+        "start_date": start_date_value,
+        "end_date": end_date_value,
+        "preset": preset,
+        "page": page,
+        "per_page": PER_PAGE,
+        "total_count": total_count,
+        "filter_values": filter_values,
+        "humanize": humanize_timestamp,
+        "recency_state": recency_state,
+        "lang": lang,
+        "user": user,
+    },
     )
     if request.query_params.get("lang"):
         response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
