@@ -14,6 +14,30 @@ Visit `http://localhost:8000` (history at `/history`). DB and task types are cre
 If running over cloudflare:
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
 
+## Generate QR codes for tasks
+```bash
+pip install -r requirements.txt        # if not already installed
+python scripts/generate_qr_codes.py --base-url http://localhost:8000
+```
+PNG files are written to `scripts/qr_codes`. Scan from a logged-in phone to auto-log the task.
+
+Script options:
+```
+usage: generate_qr_codes.py [-h] --base-url BASE_URL [--tasks-file TASKS_FILE] [--output-dir OUTPUT_DIR] [--box-size BOX_SIZE] [--border BORDER]
+
+Generate QR codes for KittyLog tasks.
+
+options:
+  -h, --help            show this help message and exit
+  --base-url BASE_URL   Base URL of the KittyLog server (e.g. http://localhost:8000).
+  --tasks-file TASKS_FILE
+                        Path to tasks.yml.
+  --output-dir OUTPUT_DIR
+                        Where to write PNG files.
+  --box-size BOX_SIZE   Pixel size per QR box (higher = larger image).
+  --border BORDER       Border size in boxes.
+```
+
 ## Auth
 - All routes except `/health` require login at `/login`.
 - Set `KITTYLOG_SECRET_KEY` to a long random string (required in prod). Set `KITTYLOG_SESSION_SECURE=true` when served over HTTPS.
