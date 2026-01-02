@@ -36,7 +36,7 @@ def create_db_and_tables() -> None:
     """Ensure database tables exist."""
     target_engine = get_engine()
     SQLModel.metadata.create_all(target_engine)
-    _ensure_sort_order_column(target_engine)
+    _ensure_legacy_columns(target_engine)
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -46,13 +46,19 @@ def get_session() -> Generator[Session, None, None]:
         yield session
 
 
-def _ensure_sort_order_column(target_engine: Engine) -> None:
-    """Add missing sort_order column for TaskType when upgrading existing DBs."""
+def _ensure_legacy_columns(target_engine: Engine) -> None:
+    """Add missing columns when upgrading existing DBs."""
     inspector = inspect(target_engine)
-    existing_columns = [col["name"] for col in inspector.get_columns("tasktype")]
-    if "sort_order" in existing_columns:
-        return
-    with target_engine.begin() as conn:
-        conn.exec_driver_sql(
-            "ALTER TABLE tasktype ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
-        )
+    tasktype_columns = [col["name"] for col in inspector.get_columns("tasktype")]
+    if "sort_order" not in tasktype_columns:
+        with target_engine.begin() as conn:
+            conn.exec_driver_sql(
+                "ALTER TABLE tasktype ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+            )
+
+    taskevent_columns = [col["name"] for col in inspector.get_columns("taskevent")]
+    if "deleted" not in taskevent_columns:
+        with target_engine.begin() as conn:
+            conn.exec_driver_sql(
+                "ALTER TABLE taskevent ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT 0"
+            )

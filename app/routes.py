@@ -5,7 +5,7 @@ import io
 import csv
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -178,7 +178,7 @@ def dashboard(
     for task in tasks:
         last_events[task.id] = session.exec(
             select(TaskEvent)
-            .where(TaskEvent.task_type_id == task.id)
+            .where(TaskEvent.task_type_id == task.id, TaskEvent.deleted == False)  # noqa: E712
             .order_by(TaskEvent.timestamp.desc())
             .limit(1)
         ).first()
@@ -212,9 +212,9 @@ def history(
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
-    query = select(TaskEvent).order_by(TaskEvent.timestamp.desc())
+    base_query = select(TaskEvent).where(TaskEvent.deleted == False)  # noqa: E712
     if task:
-        query = query.join(TaskType).where(TaskType.slug == task)
+        base_query = base_query.join(TaskType).where(TaskType.slug == task)
     start_date_value = parse_date_param(start_date, "start_date")
     end_date_value = parse_date_param(end_date, "end_date")
     if preset and not start_date_value and not end_date_value:
@@ -230,10 +230,12 @@ def history(
             end_date_value = today
     if start_date_value:
         start_dt = datetime.combine(start_date_value, time.min)
-        query = query.where(TaskEvent.timestamp >= start_dt)
+        base_query = base_query.where(TaskEvent.timestamp >= start_dt)
     if end_date_value:
         end_dt = datetime.combine(end_date_value, time.max)
-        query = query.where(TaskEvent.timestamp <= end_dt)
+        base_query = base_query.where(TaskEvent.timestamp <= end_dt)
+
+    query = base_query.order_by(TaskEvent.timestamp.desc())
 
     if format == "csv":
         all_events = session.exec(query).all()
@@ -268,9 +270,7 @@ def history(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    total_count = session.exec(
-        select(func.count()).select_from(query.subquery())
-    ).one()
+    total_count = session.exec(select(func.count()).select_from(base_query.subquery())).one()
     if isinstance(total_count, tuple):
         total_count = total_count[0]
     offset = (page - 1) * PER_PAGE
@@ -307,6 +307,34 @@ def history(
     )
     if request.query_params.get("lang"):
         response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
+@router.post("/history/{event_id}/delete")
+def delete_event(
+    request: Request,
+    event_id: int,
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    lang = resolve_language(request)
+    event = session.exec(
+        select(TaskEvent).where(TaskEvent.id == event_id, TaskEvent.deleted == False)  # noqa: E712
+    ).first()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    event.deleted = True
+    session.add(event)
+    session.commit()
+
+    params = dict(request.query_params)
+    params["lang"] = lang
+    redirect_url = "/history"
+    if params:
+        redirect_url = f"/history?{urlencode(params, doseq=True)}"
+
+    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
     return response
 
 
