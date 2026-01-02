@@ -154,7 +154,9 @@ def dashboard(
 ) -> Any:
     lang = resolve_language(request)
     tasks = session.exec(
-        select(TaskType).where(TaskType.is_active == True).order_by(TaskType.name)  # noqa: E712
+        select(TaskType)
+        .where(TaskType.is_active == True)
+        .order_by(TaskType.sort_order, TaskType.name)  # noqa: E712
     ).all()
     last_events: dict[int, TaskEvent | None] = {}
     for task in tasks:
@@ -203,7 +205,7 @@ def history(
         query = query.where(TaskEvent.timestamp <= end_dt)
 
     events = session.exec(query).all()
-    task_types = session.exec(select(TaskType).order_by(TaskType.name)).all()
+    task_types = session.exec(select(TaskType).order_by(TaskType.sort_order, TaskType.name)).all()
     task_map = {t.id: t for t in task_types}
 
     response = templates.TemplateResponse(

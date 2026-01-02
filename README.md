@@ -29,10 +29,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
 tasks:
   - slug: feed
     name: "Fed the cat"
+    order: 1
     icon: "🍽️"
     color: "blue"
 ```
-Fields: `slug` (unique), `name`, `icon` (emoji/text), `color` (Tailwind color name), `is_active` (optional; defaults true). Edits sync on startup; removed tasks aren’t deleted from DB.
+Fields: `slug` (unique), `name`, `order` (integer for sorting), `icon` (emoji/text), `color` (Tailwind color name), `is_active` (optional; defaults true). Edits sync on startup; removed tasks aren’t deleted from DB.
 
 ## Logging
 - Dashboard buttons log tasks with optional `who`/`note`.

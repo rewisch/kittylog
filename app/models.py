@@ -20,6 +20,7 @@ class TaskType(SQLModel, table=True):
     name: str
     icon: str
     color: str = Field(default="blue")
+    sort_order: int = Field(default=0, index=True)
     is_active: bool = Field(default=True, index=True)
 
     events: list[TaskEvent] = Relationship(back_populates="task_type")

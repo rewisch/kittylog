@@ -16,6 +16,7 @@ class TaskConfig:
     name: str
     icon: str
     color: str = "blue"
+    order: int = 0
 
 
 def load_task_configs(path: Path) -> list[TaskConfig]:
@@ -25,13 +26,19 @@ def load_task_configs(path: Path) -> list[TaskConfig]:
 
     tasks: Iterable[dict] = data.get("tasks", [])
     configs: List[TaskConfig] = []
-    for item in tasks:
+    for idx, item in enumerate(tasks):
+        raw_order = item.get("order", idx)
+        try:
+            order_value = int(raw_order)
+        except (TypeError, ValueError):
+            order_value = idx
         configs.append(
             TaskConfig(
                 slug=str(item["slug"]),
                 name=str(item["name"]),
                 icon=str(item.get("icon", "🐾")),
                 color=str(item.get("color", "blue")),
+                order=order_value,
             )
         )
     return configs
@@ -48,6 +55,7 @@ def sync_task_types(session: Session, configs: list[TaskConfig]) -> None:
                     name=config.name,
                     icon=config.icon,
                     color=config.color,
+                    sort_order=config.order,
                     is_active=True,
                 )
             )
@@ -55,4 +63,5 @@ def sync_task_types(session: Session, configs: list[TaskConfig]) -> None:
             existing.name = config.name
             existing.icon = config.icon
             existing.color = config.color
+            existing.sort_order = config.order
     session.commit()
