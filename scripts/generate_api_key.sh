@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${ROOT_DIR}/config/api_key.yml"
 FORCE="${FORCE:-false}"
-API_USER="${API_USER:-api}"
+API_USER="${API_USER:-cat-device-$(python - <<'PY'\nimport uuid\nprint(str(uuid.uuid4())[:8])\nPY\n)}"
 
 if [[ -f "${TARGET}" && "${FORCE}" != "true" ]]; then
   echo "config/api_key.yml already exists. Set FORCE=true to overwrite."
