@@ -46,6 +46,7 @@
                         <span class="text-xs text-slate-400">{{ t("logged_in_as", lang) }} <span class="text-slate-200 font-semibold">{{ user }}</span></span>
                         <input type="hidden" name="next" value="/login">
                         <input type="hidden" name="lang" value="{{ lang }}">
+                        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token') }}">
                         <button type="submit" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10 text-xs">{{ t("logout_label", lang) }}</button>
                     </form>
                     {% else %}

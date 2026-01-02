@@ -185,3 +185,16 @@ class _LockedFile:
 
 def _locked(path: Path, mode: str) -> _LockedFile:
     return _LockedFile(path, mode)
+
+
+def generate_csrf_token() -> str:
+    return secrets.token_hex(16)
+
+
+def validate_csrf_token(session_token: str | None, form_token: str | None) -> bool:
+    if not session_token or not form_token:
+        return False
+    try:
+        return hmac.compare_digest(session_token, form_token)
+    except Exception:
+        return False

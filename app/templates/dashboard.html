@@ -37,6 +37,7 @@
         </div>
         <form method="post" action="/log?lang={{ lang }}" class="mt-4 space-y-3">
             <input type="hidden" name="slug" value="{{ task.slug }}">
+            <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token') }}">
             <div class="grid grid-cols-2 gap-2 text-sm">
                 <input name="who" value="{{ user }}" placeholder="{{ t('log_form_who', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">
                 <input name="note" placeholder="{{ t('log_form_note', lang) }}" class="bg-slate-800/80 border border-white/5 rounded-xl px-3 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-{{ task.color }}-500/40">

@@ -13,7 +13,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .auth import authenticate_user, check_rate_limit, log_auth_event
+from .auth import (
+    authenticate_user,
+    check_rate_limit,
+    log_auth_event,
+    generate_csrf_token,
+    validate_csrf_token,
+)
 from .database import get_session
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
 from .models import TaskEvent, TaskType
@@ -30,6 +36,7 @@ def require_user(request: Request) -> str:
     """Ensure a session user is present, otherwise redirect to login."""
     user = request.session.get("user")
     if user:
+        request.session.setdefault("csrf_token", generate_csrf_token())
         return user
     next_url = request.url.path
     if request.url.query:
@@ -41,6 +48,14 @@ def require_user(request: Request) -> str:
 def current_user(request: Request) -> str | None:
     """Return current session user or None."""
     return request.session.get("user")
+
+
+def ensure_csrf_token(request: Request) -> str:
+    token = request.session.get("csrf_token")
+    if not token:
+        token = generate_csrf_token()
+        request.session["csrf_token"] = token
+    return token
 
 
 def parse_date_param(raw_value: str | None, field_name: str) -> date | None:
@@ -116,6 +131,7 @@ def login_form(request: Request, next: str = Query("/")) -> Any:
     if existing_user:
         redirect_target = next if str(next).startswith("/") else "/"
         return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
+    request.session["csrf_token"] = generate_csrf_token()
     return templates.TemplateResponse(
         "login.html",
         {
@@ -124,6 +140,7 @@ def login_form(request: Request, next: str = Query("/")) -> Any:
             "next": next,
             "error": None,
             "user": None,
+            "csrf_token": request.session["csrf_token"],
         },
     )
 
@@ -134,8 +151,11 @@ def login_submit(
     username: str = Form(...),
     password: str = Form(...),
     next: str = Form("/"),
+    csrf_token: str = Form(""),
 ) -> Any:
     lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
     client_ip = request.client.host if request.client else "unknown"
     rate_key = f"{client_ip}:{username}"
     if not check_rate_limit(rate_key):
@@ -171,7 +191,13 @@ def login_submit(
 
 
 @router.post("/logout")
-def logout(request: Request, next: str = Form("/login")) -> RedirectResponse:
+def logout(
+    request: Request,
+    next: str = Form("/login"),
+    csrf_token: str = Form(""),
+) -> RedirectResponse:
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
     redirect_target = next if str(next).startswith("/") else "/login"
     request.session.clear()
     response = RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
@@ -186,6 +212,7 @@ def dashboard(
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
+    ensure_csrf_token(request)
     tasks = session.exec(
         select(TaskType)
         .where(TaskType.is_active == True)
@@ -229,6 +256,7 @@ def history(
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
+    ensure_csrf_token(request)
     base_query = select(TaskEvent).where(TaskEvent.deleted == False)  # noqa: E712
     if task:
         base_query = base_query.join(TaskType).where(TaskType.slug == task)
@@ -322,6 +350,7 @@ def history(
         "user": user,
     },
     )
+    request.session.setdefault("csrf_token", generate_csrf_token())
     if request.query_params.get("lang"):
         response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
     return response
@@ -331,10 +360,13 @@ def history(
 def delete_event(
     request: Request,
     event_id: int,
+    csrf_token: str = Form(""),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> RedirectResponse:
     lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
     event = session.exec(
         select(TaskEvent).where(TaskEvent.id == event_id, TaskEvent.deleted == False)  # noqa: E712
     ).first()
@@ -361,10 +393,13 @@ def log_task(
     slug: str = Form(...),
     who: str | None = Form(None),
     note: str | None = Form(None),
+    csrf_token: str = Form(""),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
     task = session.exec(select(TaskType).where(TaskType.slug == slug)).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -398,6 +433,7 @@ def qr_landing(
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
+    ensure_csrf_token(request)
     task = session.exec(select(TaskType).where(TaskType.slug == task_slug)).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -442,10 +478,13 @@ def qr_confirm(
     request: Request,
     task_slug: str,
     note: str | None = Form(None),
+    csrf_token: str = Form(""),
     user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
     task = session.exec(select(TaskType).where(TaskType.slug == task_slug)).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
