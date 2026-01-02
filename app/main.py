@@ -12,6 +12,7 @@ from sqlmodel import Session
 from .config_loader import load_task_configs, sync_task_types
 from .database import create_db_and_tables, engine
 from .routes import router
+from .settings import load_settings
 
 
 app = FastAPI(title="KittyLog")
@@ -37,6 +38,8 @@ app.mount(
 @app.on_event("startup")
 def on_startup() -> None:
     create_db_and_tables()
+    settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.yml"
+    load_settings(settings_path)
     config_path = Path(__file__).resolve().parent.parent / "config" / "tasks.yml"
     configs = load_task_configs(config_path)
     with Session(engine) as session:

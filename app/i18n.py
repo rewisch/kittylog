@@ -4,6 +4,7 @@ from typing import Mapping
 
 from fastapi import Request
 
+from .settings import get_settings
 
 TranslationDict = Mapping[str, Mapping[str, str]]
 
@@ -84,19 +85,24 @@ SUPPORTED_LANGS = ("en", "de")
 DEFAULT_LANG = "en"
 
 
+def _default_lang() -> str:
+    configured = get_settings().default_language
+    return configured if configured in SUPPORTED_LANGS else DEFAULT_LANG
+
+
 def translate(key: str, lang: str) -> str:
     """Return translated string for key and lang, falling back to English."""
     if lang not in TRANSLATIONS:
-        lang = DEFAULT_LANG
+        lang = _default_lang()
     return TRANSLATIONS.get(lang, {}).get(key, TRANSLATIONS[DEFAULT_LANG].get(key, key))
 
 
 def resolve_language(request: Request) -> str:
-    """Pick language from query param or cookie; default to English."""
+    """Pick language from query param or cookie; default from settings."""
     query_lang = request.query_params.get("lang")
     if query_lang in SUPPORTED_LANGS:
         return query_lang
     cookie_lang = request.cookies.get("lang")
     if cookie_lang in SUPPORTED_LANGS:
         return cookie_lang
-    return DEFAULT_LANG
+    return _default_lang()

@@ -35,6 +35,12 @@ tasks:
 ```
 Fields: `slug` (unique), `name`, `order` (integer for sorting), `icon` (emoji/text), `color` (Tailwind color name), `is_active` (optional; defaults true). Edits sync on startup; removed tasks aren’t deleted from DB.
 
+## App settings (`config/settings.yml`)
+```yaml
+default_language: "en"  # options: en, de
+```
+Defaults to English if the file is missing or the value is unsupported.
+
 ## Logging
 - Dashboard buttons log tasks with optional `who`/`note`.
 - QR confirm: `http://<host>:8000/q/<slug>`
