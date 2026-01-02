@@ -1,34 +1,34 @@
 tasks:
   - slug: clean_litter
     name: "Katzenklo reinigen"
-    order: 1
+    order: 4
     icon: "🧹"
     color: "amber"
   - slug: feed
     name: "Füttern"
-    order: 2
+    order: 1
     icon: "🍽️"
     color: "blue"
   - slug: change_sand
     name: "Sand im Klo ausgetauscht"
-    order: 3
+    order: 5
     icon: "🏖️"
     color: "purple"
   - slug: clean_teeth
     name: "Zahnputzflocken geben"
-    order: 4
+    order: 2
     icon: "🦷"
     color: "yellow"
   - slug: "playtime"
     name: "Spielen"
-    order: 5
+    order: 3
     icon: "🎮"
     color: "green"
   - slug: "water_pump"
     name: "Wasserpumpe reinigen"
     order: 6
     icon: "🌊"
-    color: "blue"
+    color: blue"
   - slug: "water_filter"
     name: "Wasserfilter wechseln"
     order: 7
