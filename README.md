@@ -35,6 +35,8 @@ tasks:
 ```
 Fields: `slug` (unique), `name`, `order` (integer for sorting), `icon` (emoji/text), `color` (Tailwind color name), `is_active` (optional; defaults true). Edits sync on startup; removed tasks aren’t deleted from DB.
 
+Colors: If you omit `color` (or repeat colors), the app assigns unique colors per task from this palette: `amber`, `blue`, `cyan`, `emerald`, `fuchsia`, `green`, `indigo`, `lime`, `orange`, `pink`, `purple`, `red`, `rose`, `sky`, `teal`, `violet`, `yellow`.
+
 ## App settings (`config/settings.yml`)
 ```yaml
 default_language: "en"  # options: en, de
