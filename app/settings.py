@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "kittylog.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "kittylog.db"
 DEFAULT_API_KEY_PATH = Path(__file__).resolve().parent.parent / "config" / "api_key.yml"
 
 

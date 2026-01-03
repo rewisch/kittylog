@@ -1,6 +1,6 @@
 # KittyLog
 
-Tiny FastAPI app to log cat-care tasks via dashboard or QR codes. Config lives in `config/tasks.yml`, data in SQLite (`kittylog.db`).
+Tiny FastAPI app to log cat-care tasks via dashboard or QR codes. Config lives in `config/tasks.yml`, data in SQLite (`data/kittylog.db`).
 
 ## Run
 ```bash
@@ -44,8 +44,8 @@ options:
 - Users file (default `config/users.txt`, override with `KITTYLOG_USERS_FILE`) stores `username:hash:active:failed_attempts`.
 - Manage users:
   ```bash
-  python manage_users.py alice            # add
-  python manage_users.py alice --update   # change password/reactivate
+  python scripts/manage_users.py alice            # add
+  python scripts/manage_users.py alice --update   # change password/reactivate
   ```
 
 ## Tasks config (`config/tasks.yml`)

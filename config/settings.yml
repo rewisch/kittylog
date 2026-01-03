@@ -1,2 +1,2 @@
 default_language: "de"
-db_path: "kittylog.db"
+db_path: "data/kittylog.db"
