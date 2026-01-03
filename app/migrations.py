@@ -45,16 +45,14 @@ def _migrate_001_move_db_to_data_dir(repo_root: Path, settings_path: Path) -> No
     else:
         settings_data = {}
 
-    raw_db_value = settings_data.get("db_path", LEGACY_DB_RELATIVE)
-    resolved_db_path = _resolve_db_path(raw_db_value, repo_root)
+    raw_db_value = settings_data.get("db_path")
+    resolved_db_path = _resolve_db_path(raw_db_value or NEW_DB_RELATIVE, repo_root)
     legacy_path = repo_root / LEGACY_DB_RELATIVE
     new_path = repo_root / NEW_DB_RELATIVE
 
-    if resolved_db_path != legacy_path:
-        return
-
     new_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Move legacy DB forward if present, even if settings already point to new path.
     if legacy_path.exists():
         if not new_path.exists():
             legacy_path.replace(new_path)
@@ -62,9 +60,11 @@ def _migrate_001_move_db_to_data_dir(repo_root: Path, settings_path: Path) -> No
         else:
             print("New database path already exists; leaving legacy file in place.")
 
-    settings_data["db_path"] = NEW_DB_RELATIVE
-    settings_path.write_text(yaml.safe_dump(settings_data, sort_keys=False), encoding="utf-8")
-    print(f"Updated settings to use {NEW_DB_RELATIVE}")
+    # Update settings if it referenced the legacy path or omitted db_path.
+    if raw_db_value is None or resolved_db_path == legacy_path:
+        settings_data["db_path"] = NEW_DB_RELATIVE
+        settings_path.write_text(yaml.safe_dump(settings_data, sort_keys=False), encoding="utf-8")
+        print(f"Updated settings to use {NEW_DB_RELATIVE}")
 
 
 MIGRATIONS: list[Migration] = [
