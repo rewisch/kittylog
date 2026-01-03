@@ -475,7 +475,7 @@ def delete_cat(
 def history(
     request: Request,
     task: str | None = Query(None),
-    cat: int | None = Query(None),
+    cat: str | int | None = Query(None),
     start_date: str | None = Query(None),
     end_date: str | None = Query(None),
     preset: str | None = Query(None, pattern="^(today|7d|30d)$"),
