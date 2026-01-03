@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -87,6 +89,45 @@ app.mount(
 )
 
 
+request_logger = logging.getLogger("kittylog.requests")
+
+
+def _client_ip(request: Request) -> str:
+    """Return best-effort client IP, respecting proxy headers."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.perf_counter()
+    client_ip = _client_ip(request)
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    except Exception:
+        request_logger.exception("%s %s %s", client_ip, request.method, request.url.path)
+        raise
+    finally:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        user = request.session.get("user") if hasattr(request, "session") else None
+        request_logger.info(
+            "%s %s %s %s %.1fms user=%s",
+            client_ip,
+            request.method,
+            request.url.path,
+            status_code,
+            duration_ms,
+            user or "-",
+        )
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response: Response = await call_next(request)
@@ -130,4 +171,10 @@ def health() -> dict[str, str]:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app.main:app", reload=True)
+    repo_root = Path(__file__).resolve().parent.parent
+    log_config = repo_root / "config" / "logging.yml"
+    uvicorn.run(
+        "app.main:app",
+        reload=True,
+        log_config=str(log_config) if log_config.exists() else None,
+    )

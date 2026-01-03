@@ -14,6 +14,21 @@ Visit `http://localhost:8000` (history at `/history`). DB and task types are cre
 If running over cloudflare:
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
 
+## Server logging
+- Uvicorn/app logging is configured in `config/logging.yml`.
+- Logs live in the `logs/` directory by default (`logs/kittylog.log`, `logs/kittylog.access.log`, `logs/kittylog.requests.log`). Change the filenames in `config/logging.yml` if you prefer `/var/log/kittylog/` (make sure the process can write there).
+- Start the server with logging enabled (add `--reload` for dev):
+  ```bash
+  uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --access-log \
+    --proxy-headers \
+    --forwarded-allow-ips="*" \
+    --log-config config/logging.yml
+  ```
+- Watch logs in real time: `tail -f logs/kittylog.access.log logs/kittylog.requests.log`.
+
 ## Generate QR codes for tasks
 ```bash
 pip install -r requirements.txt        # if not already installed

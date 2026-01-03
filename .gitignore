@@ -183,3 +183,4 @@ config/kittylog.env
 config/api_key.yml
 config/migrations.yml
 app/static/uploads/
+logs/

@@ -1,0 +1,72 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  default:
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  access:
+    "()": uvicorn.logging.AccessFormatter
+    format: "%(asctime)s [%(levelname)s] %(client_addr)s \"%(request_line)s\" %(status_code)s"
+  request:
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: default
+    stream: ext://sys.stdout
+  app_file:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: default
+    filename: logs/kittylog.log
+    maxBytes: 1048576
+    backupCount: 5
+    encoding: utf-8
+  access_console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: access
+    stream: ext://sys.stdout
+  access_file:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: access
+    filename: logs/kittylog.access.log
+    maxBytes: 1048576
+    backupCount: 5
+    encoding: utf-8
+  request_file:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: request
+    filename: logs/kittylog.requests.log
+    maxBytes: 1048576
+    backupCount: 5
+    encoding: utf-8
+
+loggers:
+  uvicorn:
+    level: INFO
+    handlers: [console, app_file]
+  uvicorn.error:
+    level: INFO
+    handlers: [console, app_file]
+    propagate: false
+  uvicorn.access:
+    level: INFO
+    handlers: [access_console, access_file]
+    propagate: false
+  kittylog:
+    level: INFO
+    handlers: [console, app_file]
+    propagate: false
+  kittylog.requests:
+    level: INFO
+    handlers: [console, request_file]
+    propagate: false
+
+root:
+  level: WARNING
+  handlers: [console]
