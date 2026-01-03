@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import io
 import csv
 import secrets
@@ -166,6 +166,22 @@ def parse_date_param(raw_value: str | None, field_name: str) -> date | None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field_name}"
         )
+
+
+def parse_timestamp_value(raw_value: str | None) -> datetime:
+    """Parse a datetime input (typically datetime-local) into a naive UTC datetime."""
+    if raw_value is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Timestamp is required")
+    value = raw_value.strip()
+    if not value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Timestamp is required")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid timestamp format")
+    if parsed.tzinfo:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def humanize_timestamp(ts: datetime | None, lang: str = "en") -> str:
@@ -595,6 +611,39 @@ def history(
     request.session.setdefault("csrf_token", generate_csrf_token())
     if request.query_params.get("lang"):
         response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
+@router.post("/history/{event_id}/update-time")
+def update_event_time(
+    request: Request,
+    event_id: int,
+    timestamp: str = Form(...),
+    csrf_token: str = Form(""),
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    lang = resolve_language(request)
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
+    event = session.exec(
+        select(TaskEvent).where(TaskEvent.id == event_id, TaskEvent.deleted == False)  # noqa: E712
+    ).first()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    event.timestamp = parse_timestamp_value(timestamp)
+    session.add(event)
+    session.commit()
+
+    params = dict(request.query_params)
+    params["lang"] = lang
+    redirect_url = "/history"
+    if params:
+        redirect_url = f"/history?{urlencode(params, doseq=True)}"
+
+    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
     return response
 
 
