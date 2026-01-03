@@ -13,6 +13,7 @@ from sqlmodel import Session
 
 from .config_loader import load_task_configs, sync_task_types
 from .database import configure_engine, create_db_and_tables, get_engine
+from .migrations import run_startup_migrations
 from .routes import router
 from .settings import load_settings
 
@@ -109,11 +110,13 @@ async def security_headers(request: Request, call_next):
 
 @app.on_event("startup")
 def on_startup() -> None:
-    settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.yml"
+    repo_root = Path(__file__).resolve().parent.parent
+    run_startup_migrations(repo_root)
+    settings_path = repo_root / "config" / "settings.yml"
     settings = load_settings(settings_path)
     configure_engine(settings.db_path)
     create_db_and_tables()
-    config_path = Path(__file__).resolve().parent.parent / "config" / "tasks.yml"
+    config_path = repo_root / "config" / "tasks.yml"
     configs = load_task_configs(config_path)
     with Session(get_engine()) as session:
         sync_task_types(session, configs)

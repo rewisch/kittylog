@@ -48,6 +48,10 @@ options:
   python scripts/manage_users.py alice --update   # change password/reactivate
   ```
 
+## Migrations
+- Startup runs numbered migrations defined in `app/migrations.py` and records them in `config/migrations.yml`.
+- Existing installs with a root-level `kittylog.db` are migrated automatically to `data/kittylog.db` (settings are rewritten to point to the new location).
+
 ## Tasks config (`config/tasks.yml`)
 ```yaml
 tasks:
