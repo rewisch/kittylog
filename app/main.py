@@ -116,7 +116,8 @@ async def log_requests(request: Request, call_next):
         raise
     finally:
         duration_ms = (time.perf_counter() - start_time) * 1000
-        user = request.session.get("user") if hasattr(request, "session") else None
+        api_user = getattr(request.state, "api_user", None)
+        user = api_user or (request.session.get("user") if hasattr(request, "session") else None)
         request_logger.info(
             "%s %s %s %s %.1fms user=%s",
             client_ip,

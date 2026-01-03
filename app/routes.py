@@ -149,6 +149,7 @@ def require_user_or_api(request: Request) -> str:
     """Allow API key auth as a fallback to session user."""
     api_user = api_key_user(request)
     if api_user:
+        request.state.api_user = api_user
         return api_user
     return require_user(request)
 
