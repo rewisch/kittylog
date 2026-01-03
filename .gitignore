@@ -181,4 +181,5 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python
 config/kittylog.env
 config/api_key.yml
+config/migrations.yml
 app/static/uploads/
