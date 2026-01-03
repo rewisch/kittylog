@@ -11,6 +11,7 @@ SERVICE_GROUP="${SERVICE_USER}"
 LOG_DIR="${REPO_ROOT}/logs"
 DATA_DIR="${REPO_ROOT}/data"
 CONFIG_DIR="${REPO_ROOT}/config"
+SERVICE_ROOT="${REPO_ROOT}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "This script needs sudo to write ${SERVICE_FILE} and manage systemd." >&2
@@ -28,6 +29,9 @@ install -d -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" -m 750 "${LOG_DIR}" "${DAT
 if [[ -f "${CONFIG_DIR}/kittylog.env" ]]; then
   chown "${SERVICE_USER}:${SERVICE_GROUP}" "${CONFIG_DIR}/kittylog.env"
 fi
+
+# Ensure the service account owns the entire install root (e.g., /srv/kittylog).
+chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${SERVICE_ROOT}"
 
 cat >"$SERVICE_FILE" <<EOF
 [Unit]
