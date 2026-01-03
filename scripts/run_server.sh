@@ -6,6 +6,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$REPO_ROOT/config/kittylog.env"
 VENV_DIR="$REPO_ROOT/.venv"
+LOG_CONFIG="$REPO_ROOT/config/logging.yml"
+LOG_DIR="$REPO_ROOT/logs"
 
 # Create env file with a strong secret if missing.
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -33,4 +35,11 @@ if [[ -f "$VENV_DIR/bin/activate" ]]; then
   source "$VENV_DIR/bin/activate"
 fi
 
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
+mkdir -p "$LOG_DIR"
+
+UVICORN_CMD=(uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1)
+if [[ -f "$LOG_CONFIG" ]]; then
+  UVICORN_CMD+=(--access-log --log-config "$LOG_CONFIG" --forwarded-allow-ips="*")
+fi
+
+exec "${UVICORN_CMD[@]}"
