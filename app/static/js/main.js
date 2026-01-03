@@ -57,4 +57,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const isOpen = !panel.classList.contains("hidden");
     toggle.textContent = isOpen ? closeText : openText;
   });
+
+  // Toggle history filters on small screens
+  document.body.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-filter-toggle-target]");
+    if (!toggle) return;
+    const targetId = toggle.getAttribute("data-filter-toggle-target");
+    if (!targetId) return;
+    const panel = document.getElementById(targetId);
+    if (!panel) return;
+    panel.classList.toggle("hidden");
+    const isOpen = !panel.classList.contains("hidden");
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  });
 });

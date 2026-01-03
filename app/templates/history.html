@@ -7,13 +7,25 @@
         <h1 class="text-2xl font-semibold">{{ t("history_title", lang) }}</h1>
         <p class="text-slate-400 text-sm">{{ t("history_subtitle", lang) }}</p>
     </div>
-    <div class="flex items-center gap-2">
-        <a href="/history?lang={{ lang }}&format=csv{% if selected_task %}&task={{ selected_task }}{% endif %}{% if selected_cat %}&cat={{ selected_cat }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5 text-sm">{{ t("export_csv", lang) }}</a>
-    </div>
 </div>
 
-<div class="space-y-3 mb-4">
-    <form method="get" class="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
+<div class="space-y-3 mb-5">
+    <div class="flex flex-wrap items-center gap-2 justify-between">
+        <div class="flex items-center gap-2">
+            <button type="button" data-filter-toggle-target="history-filter-panel" aria-expanded="false" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm">Filter</button>
+            <a href="/history?lang={{ lang }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/10 text-sm">{{ t("filters_reset", lang) }}</a>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 text-[11px]">
+                <span class="text-slate-400 whitespace-nowrap">{{ t("quick_ranges", lang) }}:</span>
+                {% for code, label in [("today", t("range_today", lang)), ("7d", t("range_7d", lang)), ("30d", t("range_30d", lang))] %}
+                <a href="/history?lang={{ lang }}&preset={{ code }}" class="px-3 py-1 rounded-full border border-white/10 hover:border-white/20 whitespace-nowrap {{ 'bg-white/10 text-slate-100' if preset==code else 'text-slate-400' }}">{{ label }}</a>
+                {% endfor %}
+            </div>
+            <a href="/history?lang={{ lang }}&format=csv{% if selected_task %}&task={{ selected_task }}{% endif %}{% if selected_cat %}&cat={{ selected_cat }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5 text-sm whitespace-nowrap">{{ t("export_csv", lang) }}</a>
+        </div>
+    </div>
+    <form method="get" id="history-filter-panel" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-sm rounded-2xl bg-slate-900/70 border border-white/5 p-3 {{ '' if active else 'hidden md:grid' }}">
         <input type="hidden" name="lang" value="{{ lang }}">
         <select name="task" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
             <option value="">{{ t("all_tasks", lang) }}</option>
@@ -34,12 +46,6 @@
             <a href="/history?lang={{ lang }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5">{{ t("filters_reset", lang) }}</a>
         </div>
     </form>
-    <div class="flex flex-wrap gap-2 text-xs">
-        <span class="text-slate-400">{{ t("quick_ranges", lang) }}:</span>
-        {% for code, label in [("today", t("range_today", lang)), ("7d", t("range_7d", lang)), ("30d", t("range_30d", lang))] %}
-        <a href="/history?lang={{ lang }}&preset={{ code }}" class="px-3 py-1.5 rounded-full border border-white/10 hover:border-white/20 {{ 'bg-white/10 text-slate-100' if preset==code else 'text-slate-400' }}">{{ label }}</a>
-        {% endfor %}
-    </div>
     {% set active = [] %}
     {% if selected_task %}{% set _ = active.append({"key":"task","label":t("filter_task", lang) ~ ": " ~ selected_task}) %}{% endif %}
     {% if selected_cat %}{% set _ = active.append({"key":"cat","label":t("filter_cat", lang) ~ ": " ~ (cat_map.get(selected_cat).name if cat_map.get(selected_cat) else selected_cat)}) %}{% endif %}
@@ -76,8 +82,8 @@
     {% set cat = cat_map.get(ev.cat_id) if ev.cat_id else None %}
     {% set state = recency_state(ev.timestamp) %}
     {% set state_class = "border-emerald-400/30 bg-emerald-500/5" if state=="fresh" else ("border-amber-400/30 bg-amber-500/5" if state=="warm" else "border-white/5 bg-slate-900/70") %}
-    <div class="{{ state_class }} rounded-2xl p-3 flex items-center gap-3 shadow-lg shadow-black/40">
-        <div class="h-12 w-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl">{{ task.icon if task else "🐾" }}</div>
+    <div class="{{ state_class }} rounded-2xl p-2 md:p-3 flex items-center gap-3 shadow-lg shadow-black/40">
+        <div class="h-10 w-10 md:h-12 md:w-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl">{{ task.icon if task else "🐾" }}</div>
         <div class="flex-1">
             <p class="font-semibold">{{ task.name if task else t("unknown_task", lang) }}</p>
             <div class="text-slate-400 text-sm flex items-center gap-2 flex-wrap">
@@ -100,7 +106,7 @@
         </div>
         <form method="post" action="/history/{{ ev.id }}/delete?lang={{ lang }}{% if selected_task %}&task={{ selected_task }}{% endif %}{% if selected_cat %}&cat={{ selected_cat }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if preset %}&preset={{ preset }}{% endif %}{% if page %}&page={{ page }}{% endif %}" class="self-start">
             <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token') }}">
-            <button type="submit" data-confirm="{{ t('delete_confirm', lang) }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-xs text-slate-200">
+            <button type="submit" data-confirm="{{ t('delete_confirm', lang) }}" class="px-2.5 py-1.5 md:px-3 md:py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-[11px] md:text-xs text-slate-200">
                 {{ t("delete_entry", lang) }}
             </button>
         </form>
