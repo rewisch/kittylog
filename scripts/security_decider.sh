@@ -14,7 +14,12 @@ Environment overrides (defaults shown):
   STATE_DIR=var/security
   DECISIONS_LOG=var/security.decisions.log
   STATIC_WHITELIST=var/security/whitelist_static.txt
+  BAN_DURATION=86400 (unban + Cloudflare unblock after seconds)
+  CLOUDFLARE_ZONE_ID=your_zone_id
+  CLOUDFLARE_API_TOKEN=your_api_token
   LOOP_SLEEP=0   (set >0 to loop forever with sleep seconds)
+
+Values are also read from config/kittylog.env if present.
 
 Run once (cron-style):
   bash scripts/security_decider.sh
@@ -25,6 +30,16 @@ USAGE
   exit 0
 fi
 
+# Paths (override via env if needed)
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+ENV_FILE=${ENV_FILE:-"$REPO_ROOT/config/kittylog.env"}
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
 # Tunables
 ANON_LIMIT=${ANON_LIMIT:-15}
 ANON_WINDOW=${ANON_WINDOW:-900}          # seconds
@@ -32,10 +47,11 @@ LOGIN_FAIL_LIMIT=${LOGIN_FAIL_LIMIT:-5}
 LOGIN_FAIL_WINDOW=${LOGIN_FAIL_WINDOW:-3600}
 WHITELIST_TTL=${WHITELIST_TTL:-43200}    # 12h
 BAN_TTL=${BAN_TTL:-43200}                # avoid spammy duplicate bans
+BAN_DURATION=${BAN_DURATION:-86400}      # Cloudflare block lifetime (default 24h)
 LOOP_SLEEP=${LOOP_SLEEP:-5}             # >0 to loop forever with sleep seconds
+CLOUDFLARE_ZONE_ID=${CLOUDFLARE_ZONE_ID:-${CF_ZONE_ID:-}}
+CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-${CF_API_TOKEN:-}}
 
-# Paths (override via env if needed)
-REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 REQUEST_LOG=${REQUEST_LOG:-"$REPO_ROOT/logs/kittylog.requests.log"}
 AUTH_LOG=${AUTH_LOG:-"$REPO_ROOT/logs/auth.log"}
 STATE_DIR=${STATE_DIR:-"$REPO_ROOT/var/security"}
@@ -51,12 +67,96 @@ AUTH_OFFSET=${AUTH_OFFSET:-"$STATE_DIR/auth.offset"}
 mkdir -p "$STATE_DIR" "$(dirname "$DECISIONS_LOG")"
 touch "$DECISIONS_LOG" "$ANON_FILE" "$FAIL_FILE" "$DYNAMIC_WHITELIST" "$BAN_FILE" "$REQUEST_OFFSET" "$AUTH_OFFSET"
 
-declare -A STATIC_WL DYN_USER DYN_EXP ANON_COUNT ANON_TS FAIL_COUNT FAIL_TS LAST_BAN
+declare -A STATIC_WL DYN_USER DYN_EXP ANON_COUNT ANON_TS FAIL_COUNT FAIL_TS LAST_BAN BAN_RULE_ID
 REQUESTS_SEEN=0
 AUTH_SEEN=0
 
 info() {
   printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+}
+
+cloudflare_configured() {
+  [[ -n "$CLOUDFLARE_ZONE_ID" && -n "$CLOUDFLARE_API_TOKEN" ]]
+}
+
+cloudflare_parse_response() {
+  python - <<'PY' 2>/dev/null
+import json, sys
+
+def fmt_errors(items):
+    if not items:
+        return ""
+    parts = []
+    for item in items:
+        if isinstance(item, dict):
+            parts.append(item.get("message") or item.get("code") or str(item))
+        else:
+            parts.append(str(item))
+    return "; ".join(parts)
+
+try:
+    data = json.load(sys.stdin)
+except Exception as exc:
+    print(f"err||Invalid JSON: {exc}")
+    sys.exit(0)
+
+rid = ""
+result = data.get("result")
+if isinstance(result, dict):
+    rid = result.get("id", "")
+
+status = "ok" if data.get("success") else "err"
+msg = fmt_errors(data.get("errors")) or fmt_errors(data.get("messages"))
+print(f"{status}|{rid}|{msg}")
+PY
+}
+
+cloudflare_block_ip() {
+  local ip="$1" reason="$2" note payload url response parsed status rule_id msg
+  cloudflare_configured || return
+  note="kittylog ${reason}"
+  payload=$(printf '{"mode":"block","configuration":{"target":"ip","value":"%s"},"notes":"%s"}' "$ip" "$note")
+  url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules"
+  if ! response=$(curl -sS -X POST "$url" \
+    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "$payload"); then
+    info "cloudflare block failed for $ip (curl error)"
+    return
+  fi
+  parsed=$(cloudflare_parse_response <<<"$response")
+  IFS='|' read -r status rule_id msg <<<"$parsed"
+  if [[ "$status" == "ok" && -n "$rule_id" ]]; then
+    BAN_RULE_ID["$ip"]="$rule_id"
+    info "cloudflare block applied: $ip rule_id=$rule_id reason=$reason"
+  else
+    info "cloudflare block failed for $ip: ${msg:-unknown error}"
+  fi
+}
+
+cloudflare_unblock_ip() {
+  local ip="$1" reason="$2" rule_id url response parsed status msg
+  cloudflare_configured || return
+  rule_id="${BAN_RULE_ID[$ip]:-}"
+  if [[ -z "$rule_id" ]]; then
+    info "cloudflare unblock skipped for $ip (no rule id)"
+    return
+  fi
+  url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules/${rule_id}"
+  if ! response=$(curl -sS -X DELETE "$url" \
+    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    -H "Content-Type: application/json"); then
+    info "cloudflare unblock failed for $ip rule_id=$rule_id (curl error)"
+    return
+  fi
+  parsed=$(cloudflare_parse_response <<<"$response")
+  IFS='|' read -r status _ msg <<<"$parsed"
+  if [[ "$status" == "ok" ]]; then
+    info "cloudflare unblock applied: $ip reason=$reason"
+    unset BAN_RULE_ID["$ip"]
+  else
+    info "cloudflare unblock failed for $ip rule_id=$rule_id: ${msg:-unknown error}"
+  fi
 }
 
 ts_to_epoch() {
@@ -149,16 +249,17 @@ prune_counts() {
 }
 
 load_bans() {
-  while IFS=$'\t' read -r ip ts; do
+  while IFS=$'\t' read -r ip ts rule_id; do
     [[ -z "$ip" || -z "$ts" ]] && continue
     LAST_BAN["$ip"]="$ts"
+    [[ -n "$rule_id" ]] && BAN_RULE_ID["$ip"]="$rule_id"
   done <"$BAN_FILE"
 }
 
 save_bans() {
   : >"$BAN_FILE"
   for ip in "${!LAST_BAN[@]}"; do
-    echo -e "${ip}\t${LAST_BAN[$ip]}" >>"$BAN_FILE"
+    echo -e "${ip}\t${LAST_BAN[$ip]}\t${BAN_RULE_ID[$ip]:-}" >>"$BAN_FILE"
   done
 }
 
@@ -187,12 +288,33 @@ ban_ip() {
   local ip="$1" reason="$2" now="$3"
   is_whitelisted "$ip" "$now" && return
   local last=${LAST_BAN[$ip]:-0}
+  local rule_id=${BAN_RULE_ID[$ip]:-}
   if (( now - last < BAN_TTL )); then
+    if [[ -z "$rule_id" ]] && cloudflare_configured; then
+      cloudflare_block_ip "$ip" "$reason"
+    fi
+    return
+  fi
+  if [[ -n "$rule_id" ]] && (( now - last < BAN_DURATION )); then
     return
   fi
   LAST_BAN["$ip"]="$now"
   printf '%s SECURITY BAN %s reason=%s\n' "$(date --iso-8601=seconds)" "$ip" "$reason" >>"$DECISIONS_LOG"
   info "ban emitted: $ip reason=$reason"
+  cloudflare_block_ip "$ip" "$reason"
+}
+
+expire_bans() {
+  local now="$1"
+  for ip in "${!LAST_BAN[@]}"; do
+    local last=${LAST_BAN[$ip]:-0}
+    if (( now - last > BAN_DURATION )); then
+      printf '%s SECURITY UNBAN %s reason=expired\n' "$(date --iso-8601=seconds)" "$ip" >>"$DECISIONS_LOG"
+      cloudflare_unblock_ip "$ip" "expired"
+      unset LAST_BAN["$ip"]
+      unset BAN_RULE_ID["$ip"]
+    fi
+  done
 }
 
 process_requests() {
@@ -266,6 +388,7 @@ run_once() {
   now=$(date +%s)
   prune_counts ANON_COUNT ANON_TS "$ANON_WINDOW" "$now"
   prune_counts FAIL_COUNT FAIL_TS "$LOGIN_FAIL_WINDOW" "$now"
+  expire_bans "$now"
 
   save_dynamic_whitelist
   save_counts "$ANON_FILE" ANON_COUNT ANON_TS
