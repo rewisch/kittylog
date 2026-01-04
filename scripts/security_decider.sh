@@ -13,8 +13,8 @@ Environment overrides (defaults shown):
   AUTH_LOG=logs/auth.log
   STATE_DIR=var/security
   DECISIONS_LOG=var/security.decisions.log
-  STATIC_WHITELIST=var/security/whitelist_static.txt
-  BAN_DURATION=86400 (unban + Cloudflare unblock after seconds)
+STATIC_WHITELIST=var/security/whitelist_static.txt
+  BAN_DURATION=86400 (re-evaluate block after seconds; manual unblock only)
   CLOUDFLARE_ZONE_ID=your_zone_id
   CLOUDFLARE_API_TOKEN=your_api_token
   LOOP_SLEEP=0   (set >0 to loop forever with sleep seconds)
@@ -67,7 +67,7 @@ AUTH_OFFSET=${AUTH_OFFSET:-"$STATE_DIR/auth.offset"}
 mkdir -p "$STATE_DIR" "$(dirname "$DECISIONS_LOG")"
 touch "$DECISIONS_LOG" "$ANON_FILE" "$FAIL_FILE" "$DYNAMIC_WHITELIST" "$BAN_FILE" "$REQUEST_OFFSET" "$AUTH_OFFSET"
 
-declare -A STATIC_WL DYN_USER DYN_EXP ANON_COUNT ANON_TS FAIL_COUNT FAIL_TS LAST_BAN BAN_RULE_ID
+declare -A STATIC_WL DYN_USER DYN_EXP ANON_COUNT ANON_TS FAIL_COUNT FAIL_TS LAST_BAN
 REQUESTS_SEEN=0
 AUTH_SEEN=0
 
@@ -117,74 +117,6 @@ print(f"{status}|{rid}|{msg}")
 PY
 }
 
-cloudflare_lookup_rule_id() {
-  local ip="$1" url tmp http body parsed status rule_id msg
-  cloudflare_configured || return 1
-  url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules"
-  url="${url}?mode=block&configuration.target=ip&configuration.value=${ip}&page=1&per_page=50"
-  tmp="$(mktemp)"
-  if ! http=$(curl -sS -o "$tmp" -w '%{http_code}' -X GET "$url" \
-    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-    -H "Accept: application/json" \
-    -H "Content-Type: application/json"); then
-    info "cloudflare lookup failed for $ip (curl error)"
-    rm -f "$tmp"
-    return 1
-  fi
-  body="$(cat "$tmp")"
-  rm -f "$tmp"
-  if [[ "$http" != "200" ]]; then
-    local snippet="${body:0:200}"
-    info "cloudflare lookup failed for $ip (http $http, body=${snippet:-<empty>})"
-    return 1
-  fi
-  parsed=$(CLOUDFLARE_LOOKUP_IP="$ip" python - <<'PY' 2>/dev/null
-import json, os, sys
-
-ip = os.environ.get("CLOUDFLARE_LOOKUP_IP", "")
-raw = sys.stdin.read()
-try:
-    data = json.loads(raw)
-except Exception as exc:
-    print(f"err||lookup json error: {exc}")
-    sys.exit(0)
-
-rid = ""
-for item in data.get("result") or []:
-    cfg = item.get("configuration") or {}
-    if cfg.get("target") == "ip" and cfg.get("value") == ip:
-        rid = item.get("id", "") or ""
-        break
-
-status = "ok" if data.get("success") and rid else "err"
-msg = ""
-errors = data.get("errors") or data.get("messages") or []
-if errors:
-    msg = "; ".join(str(e.get("message", e)) if isinstance(e, dict) else str(e) for e in errors)
-print(f"{status}|{rid}|{msg}")
-PY
-)
-  IFS='|' read -r status rule_id msg <<<"$parsed"
-  if [[ "$status" == "ok" && -n "$rule_id" ]]; then
-    echo "$rule_id"
-    return 0
-  fi
-  info "cloudflare lookup failed for $ip: ${msg:-no rule found}"
-  return 1
-}
-
-cloudflare_record_existing_block() {
-  local ip="$1" reason="$2" body="$3" rule_id
-  [[ "$body" == *"duplicate_of_existing"* ]] || return 1
-  if rule_id=$(cloudflare_lookup_rule_id "$ip"); then
-    BAN_RULE_ID["$ip"]="$rule_id"
-    info "cloudflare block already present: $ip rule_id=$rule_id reason=$reason"
-  else
-    info "cloudflare block already present for $ip but rule id not found"
-  fi
-  return 0
-}
-
 cloudflare_block_ip() {
   local ip="$1" reason="$2" note payload url http body parsed status rule_id msg tmp
   cloudflare_configured || return
@@ -204,9 +136,6 @@ cloudflare_block_ip() {
   body="$(cat "$tmp")"
   rm -f "$tmp"
   if [[ "$http" != "200" ]]; then
-    if cloudflare_record_existing_block "$ip" "$reason" "$body"; then
-      return
-    fi
     local snippet="${body:0:200}"
     info "cloudflare block failed for $ip (http $http, body=${snippet:-<empty>})"
     return
@@ -214,62 +143,9 @@ cloudflare_block_ip() {
   parsed=$(cloudflare_parse_response <<<"$body")
   IFS='|' read -r status rule_id msg <<<"$parsed"
   if [[ "$status" == "ok" && -n "$rule_id" ]]; then
-    BAN_RULE_ID["$ip"]="$rule_id"
     info "cloudflare block applied: $ip rule_id=$rule_id reason=$reason"
-  elif cloudflare_record_existing_block "$ip" "$reason" "$body"; then
-    return
-  elif cloudflare_record_existing_block "$ip" "$reason" "duplicate_of_existing"; then
-    # fallback for empty/odd responses that might still be duplicates
-    return
   else
     info "cloudflare block failed for $ip: ${msg:-unknown error}"
-    # final attempt: if we suspect the block exists but parsing failed, try lookup
-    if rule_id=$(cloudflare_lookup_rule_id "$ip"); then
-      BAN_RULE_ID["$ip"]="$rule_id"
-      info "cloudflare block assumed present after lookup: $ip rule_id=$rule_id reason=$reason"
-    fi
-  fi
-}
-
-cloudflare_unblock_ip() {
-  local ip="$1" reason="$2" rule_id url http body parsed status msg tmp
-  cloudflare_configured || return
-  rule_id="${BAN_RULE_ID[$ip]:-}"
-  if [[ -n "$rule_id" && ! "$rule_id" =~ ^[A-Za-z0-9]+$ ]]; then
-    rule_id=""
-  fi
-  if [[ -z "$rule_id" ]]; then
-    rule_id=$(cloudflare_lookup_rule_id "$ip") || true
-    if [[ -z "$rule_id" ]]; then
-      info "cloudflare unblock skipped for $ip (no rule id)"
-      return
-    fi
-    BAN_RULE_ID["$ip"]="$rule_id"
-  fi
-  url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules/${rule_id}"
-  tmp="$(mktemp)"
-  if ! http=$(curl -sS -o "$tmp" -w '%{http_code}' -X DELETE "$url" \
-    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-    -H "Accept: application/json" \
-    -H "Content-Type: application/json"); then
-    info "cloudflare unblock failed for $ip rule_id=$rule_id (curl error)"
-    rm -f "$tmp"
-    return
-  fi
-  body="$(cat "$tmp")"
-  rm -f "$tmp"
-  if [[ "$http" != "200" ]]; then
-    local snippet="${body:0:200}"
-    info "cloudflare unblock failed for $ip rule_id=$rule_id (http $http, body=${snippet:-<empty>})"
-    return
-  fi
-  parsed=$(cloudflare_parse_response <<<"$body")
-  IFS='|' read -r status _ msg <<<"$parsed"
-  if [[ "$status" == "ok" ]]; then
-    info "cloudflare unblock applied: $ip reason=$reason"
-    unset BAN_RULE_ID["$ip"]
-  else
-    info "cloudflare unblock failed for $ip rule_id=$rule_id: ${msg:-unknown error}"
   fi
 }
 
@@ -363,17 +239,16 @@ prune_counts() {
 }
 
 load_bans() {
-  while IFS=$'\t' read -r ip ts rule_id; do
+  while IFS=$'\t' read -r ip ts _; do
     [[ -z "$ip" || -z "$ts" ]] && continue
     LAST_BAN["$ip"]="$ts"
-    [[ -n "$rule_id" ]] && BAN_RULE_ID["$ip"]="$rule_id"
   done <"$BAN_FILE"
 }
 
 save_bans() {
   : >"$BAN_FILE"
   for ip in "${!LAST_BAN[@]}"; do
-    echo -e "${ip}\t${LAST_BAN[$ip]}\t${BAN_RULE_ID[$ip]:-}" >>"$BAN_FILE"
+    echo -e "${ip}\t${LAST_BAN[$ip]}" >>"$BAN_FILE"
   done
 }
 
@@ -402,14 +277,7 @@ ban_ip() {
   local ip="$1" reason="$2" now="$3"
   is_whitelisted "$ip" "$now" && return
   local last=${LAST_BAN[$ip]:-0}
-  local rule_id=${BAN_RULE_ID[$ip]:-}
   if (( now - last < BAN_TTL )); then
-    if [[ -z "$rule_id" ]] && cloudflare_configured; then
-      cloudflare_block_ip "$ip" "$reason"
-    fi
-    return
-  fi
-  if [[ -n "$rule_id" ]] && (( now - last < BAN_DURATION )); then
     return
   fi
   LAST_BAN["$ip"]="$now"
@@ -423,10 +291,8 @@ expire_bans() {
   for ip in "${!LAST_BAN[@]}"; do
     local last=${LAST_BAN[$ip]:-0}
     if (( now - last > BAN_DURATION )); then
-      printf '%s SECURITY UNBAN %s reason=expired\n' "$(date --iso-8601=seconds)" "$ip" >>"$DECISIONS_LOG"
-      cloudflare_unblock_ip "$ip" "expired"
+      # No automatic Cloudflare unblock; we only refresh local state so re-bans can happen if needed.
       unset LAST_BAN["$ip"]
-      unset BAN_RULE_ID["$ip"]
     fi
   done
 }
