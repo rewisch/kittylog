@@ -108,7 +108,7 @@ cloudflare_find_rule_id() {
     --data-urlencode "configuration.target=ip" \
     --data-urlencode "configuration.value=${ip}" \
     --data-urlencode "mode=block" \
-    --data-urlencode "per_page=50"); then
+    --data-urlencode "per_page=200"); then
     info "cloudflare lookup failed for $ip (curl error)"
     rm -f "$tmp"
     return
@@ -120,9 +120,9 @@ cloudflare_find_rule_id() {
     info "cloudflare lookup failed for $ip (http $http, body=${snippet:-<empty>})"
     return
   fi
-  rule_id=$(python - <<'PY' 2>/dev/null
+  rule_id=$(python - "$ip" <<'PY' 2>/dev/null
 import json, sys
-target = sys.argv[1]
+target = sys.argv[1] if len(sys.argv) > 1 else ""
 try:
     data = json.loads(sys.stdin.read())
 except Exception:
