@@ -97,7 +97,7 @@ PY
 }
 
 cloudflare_find_rule_id() {
-  local ip="$1" url http body parsed status rule_id msg tmp
+  local ip="$1" url http body rule_id tmp
   cloudflare_configured || return
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules"
   tmp="$(mktemp)"
@@ -120,12 +120,30 @@ cloudflare_find_rule_id() {
     info "cloudflare lookup failed for $ip (http $http, body=${snippet:-<empty>})"
     return
   fi
-  parsed=$(cloudflare_parse_response <<<"$body")
-  IFS='|' read -r status rule_id msg <<<"$parsed"
-  if [[ "$status" == "ok" && -n "$rule_id" ]]; then
+  rule_id=$(python - <<'PY' 2>/dev/null
+import json, sys
+target = sys.argv[1]
+try:
+    data = json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(1)
+result = data.get("result") or []
+if isinstance(result, dict):
+    result = [result]
+for item in result:
+    cfg = item.get("configuration") or {}
+    if cfg.get("target") == "ip" and cfg.get("value") == target:
+        rid = item.get("id")
+        if rid:
+            print(rid)
+            sys.exit(0)
+sys.exit(2)
+PY
+  "$ip")
+  if [[ -n "$rule_id" ]]; then
     echo "$rule_id"
   else
-    info "cloudflare lookup failed for $ip: ${msg:-not found}"
+    info "cloudflare lookup failed for $ip: not found in first page"
   fi
 }
 
