@@ -94,10 +94,16 @@ def fmt_errors(items):
             parts.append(str(item))
     return "; ".join(parts)
 
+raw = sys.stdin.read()
+if not raw.strip():
+    print("err||Empty response from API")
+    sys.exit(0)
+
 try:
-    data = json.load(sys.stdin)
+    data = json.loads(raw)
 except Exception as exc:
-    print(f"err||Invalid JSON: {exc}")
+    snippet = raw.strip().replace("\n", " ")[:200]
+    print(f"err||Invalid JSON ({exc}); body_snippet={snippet}")
     sys.exit(0)
 
 rid = ""
@@ -119,6 +125,7 @@ cloudflare_block_ip() {
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules"
   if ! response=$(curl -sS -X POST "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    -H "Accept: application/json" \
     -H "Content-Type: application/json" \
     --data "$payload"); then
     info "cloudflare block failed for $ip (curl error)"
@@ -145,6 +152,7 @@ cloudflare_unblock_ip() {
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules/${rule_id}"
   if ! response=$(curl -sS -X DELETE "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    -H "Accept: application/json" \
     -H "Content-Type: application/json"); then
     info "cloudflare unblock failed for $ip rule_id=$rule_id (curl error)"
     return
