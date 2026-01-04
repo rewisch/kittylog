@@ -80,41 +80,28 @@ cloudflare_configured() {
 }
 
 cloudflare_parse_response() {
-  python - <<'PY' 2>/dev/null
-import json, sys
+  # Reads JSON from stdin. Outputs: status|rule_id|message
+  local raw status="err" rule_id="" msg="" success=""
+  raw="$(cat)"
+  [[ -z "${raw//[[:space:]]/}" ]] && { echo "err||Empty response from API"; return; }
 
-def fmt_errors(items):
-    if not items:
-        return ""
-    parts = []
-    for item in items:
-        if isinstance(item, dict):
-            parts.append(item.get("message") or item.get("code") or str(item))
-        else:
-            parts.append(str(item))
-    return "; ".join(parts)
+  if command -v jq >/dev/null 2>&1; then
+    success=$(jq -r 'select(has("success")) | .success' <<<"$raw" 2>/dev/null)
+    rule_id=$(jq -r '(.result.id // .result[0].id // empty)' <<<"$raw" 2>/dev/null | head -n1)
+    msg=$(jq -r '[.errors[]?.message // .errors[]? // .messages[]?] | map(tostring) | join("; ")' <<<"$raw" 2>/dev/null)
+    [[ "$success" == "true" ]] && status="ok" || status="err"
+    echo "${status}|${rule_id}|${msg}"
+    return
+  fi
 
-raw = sys.stdin.read()
-if not raw.strip():
-    print("err||Empty response from API")
-    sys.exit(0)
-
-try:
-    data = json.loads(raw)
-except Exception as exc:
-    snippet = raw.strip().replace("\n", " ")[:200]
-    print(f"err||Invalid JSON ({exc}); body_snippet={snippet}")
-    sys.exit(0)
-
-rid = ""
-result = data.get("result")
-if isinstance(result, dict):
-    rid = result.get("id", "")
-
-status = "ok" if data.get("success") else "err"
-msg = fmt_errors(data.get("errors")) or fmt_errors(data.get("messages"))
-print(f"{status}|{rid}|{msg}")
-PY
+  # Fallback without jq: best-effort parsing via grep/sed
+  [[ "$raw" =~ \"success\"[[:space:]]*:[[:space:]]*true ]] && status="ok"
+  rule_id=$(printf '%s' "$raw" | sed -n 's/.*"result"[[:space:]]*:[[:space:]]*{[^}]*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+  [[ -z "$rule_id" ]] && rule_id=$(printf '%s' "$raw" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+  if [[ "$raw" =~ \"message\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+    msg="${BASH_REMATCH[1]}"
+  fi
+  echo "${status}|${rule_id}|${msg}"
 }
 
 cloudflare_block_ip() {
@@ -142,8 +129,12 @@ cloudflare_block_ip() {
   fi
   parsed=$(cloudflare_parse_response <<<"$body")
   IFS='|' read -r status rule_id msg <<<"$parsed"
-  if [[ "$status" == "ok" && -n "$rule_id" ]]; then
-    info "cloudflare block applied: $ip rule_id=$rule_id reason=$reason"
+  if [[ "$status" == "ok" ]]; then
+    if [[ -n "$rule_id" ]]; then
+      info "cloudflare block applied: $ip rule_id=$rule_id reason=$reason"
+    else
+      info "cloudflare block applied: $ip reason=$reason (no rule id in response)"
+    fi
   else
     info "cloudflare block failed for $ip: ${msg:-unknown error}"
   fi
