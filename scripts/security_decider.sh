@@ -10,7 +10,7 @@ Reads logs, updates whitelist, and emits SECURITY BAN lines for Fail2ban/firewal
 
 Environment overrides (defaults shown):
   REQUEST_LOG=logs/kittylog.requests.log
-  AUTH_LOG=config/auth.log
+  AUTH_LOG=logs/auth.log
   STATE_DIR=var/security
   DECISIONS_LOG=var/security.decisions.log
   STATIC_WHITELIST=var/security/whitelist_static.txt
@@ -37,7 +37,7 @@ LOOP_SLEEP=${LOOP_SLEEP:-5}             # >0 to loop forever with sleep seconds
 # Paths (override via env if needed)
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 REQUEST_LOG=${REQUEST_LOG:-"$REPO_ROOT/logs/kittylog.requests.log"}
-AUTH_LOG=${AUTH_LOG:-"$REPO_ROOT/config/auth.log"}
+AUTH_LOG=${AUTH_LOG:-"$REPO_ROOT/logs/auth.log"}
 STATE_DIR=${STATE_DIR:-"$REPO_ROOT/var/security"}
 STATIC_WHITELIST=${STATIC_WHITELIST:-"$STATE_DIR/whitelist_static.txt"}
 DYNAMIC_WHITELIST=${DYNAMIC_WHITELIST:-"$STATE_DIR/whitelist_dynamic.tsv"}

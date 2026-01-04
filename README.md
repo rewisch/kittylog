@@ -98,7 +98,7 @@ Defaults to English if the file is missing or the value is unsupported.
 - The top-right language toggle writes a `lang` cookie so navigation and forms stay in the chosen language.
 
 ## Security banning/whitelist helper
-- A bash “brain” at `scripts/security_decider.sh` reads `logs/kittylog.requests.log` + `config/auth.log`, tracks anonymous hits and failed logins, maintains a dynamic whitelist, and writes synthetic `SECURITY BAN <ip>` lines to `var/security.decisions.log` by default (override with `DECISIONS_LOG`).
+- A bash “brain” at `scripts/security_decider.sh` reads `logs/kittylog.requests.log` + `logs/auth.log`, tracks anonymous hits and failed logins, maintains a dynamic whitelist, and writes synthetic `SECURITY BAN <ip>` lines to `var/security.decisions.log` by default (override with `DECISIONS_LOG`).
 - Default rules: unauthenticated requests >5 in 15m → ban; login failures >5 in 1h → ban; successful login or API-key use → whitelist IP for 12h. Static allowlist defaults to `var/security/whitelist_static.txt` (one IP per line). State lives in `var/security/` by default; override paths/limits via env vars.
 - Run via cron every minute or as a service. For a continuous loop under systemd, set `Environment=LOOP_SLEEP=5` (seconds).
 - Fail2ban: drop `config/fail2ban/kittylog-security.conf` into `/etc/fail2ban/jail.d/` and `config/fail2ban/filter.d/kittylog-security.conf` into `/etc/fail2ban/filter.d/`, then `systemctl reload fail2ban`. Default `logpath` is the repo-local `var/security.decisions.log`; adjust if you relocate `DECISIONS_LOG`.

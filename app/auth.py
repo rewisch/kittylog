@@ -149,8 +149,8 @@ def check_rate_limit(key: str) -> bool:
 
 
 def log_auth_event(username: str, ip: str, success: bool, reason: str | None = None) -> None:
-    """Append a simple audit line to config/auth.log (best-effort)."""
-    log_path = Path(__file__).resolve().parent.parent / "config" / "auth.log"
+    """Append a simple audit line to logs/auth.log (best-effort)."""
+    log_path = Path(__file__).resolve().parent.parent / "logs" / "auth.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\t{ip}\t{username}\t{'OK' if success else 'FAIL'}"
     if reason:
