@@ -118,23 +118,26 @@ PY
 }
 
 cloudflare_block_ip() {
-  local ip="$1" reason="$2" note payload url raw http body parsed status rule_id msg
+  local ip="$1" reason="$2" note payload url http body parsed status rule_id msg tmp
   cloudflare_configured || return
   note="kittylog ${reason}"
   payload=$(printf '{"mode":"block","configuration":{"target":"ip","value":"%s"},"notes":"%s"}' "$ip" "$note")
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules"
-  if ! raw=$(curl -sS -w '\n%{http_code}' -X POST "$url" \
+  tmp="$(mktemp)"
+  if ! http=$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json" \
     --data "$payload"); then
     info "cloudflare block failed for $ip (curl error)"
+    rm -f "$tmp"
     return
   fi
-  http="${raw##*$'\n'}"
-  body="${raw%$'\n'"$http"}"
+  body="$(cat "$tmp")"
+  rm -f "$tmp"
   if [[ "$http" != "200" ]]; then
-    info "cloudflare block failed for $ip (http $http)"
+    local snippet="${body:0:200}"
+    info "cloudflare block failed for $ip (http $http, body=${snippet:-<empty>})"
     return
   fi
   parsed=$(cloudflare_parse_response <<<"$body")
@@ -148,7 +151,7 @@ cloudflare_block_ip() {
 }
 
 cloudflare_unblock_ip() {
-  local ip="$1" reason="$2" rule_id url raw http body parsed status msg
+  local ip="$1" reason="$2" rule_id url http body parsed status msg tmp
   cloudflare_configured || return
   rule_id="${BAN_RULE_ID[$ip]:-}"
   if [[ -z "$rule_id" ]]; then
@@ -156,17 +159,20 @@ cloudflare_unblock_ip() {
     return
   fi
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules/${rule_id}"
-  if ! raw=$(curl -sS -w '\n%{http_code}' -X DELETE "$url" \
+  tmp="$(mktemp)"
+  if ! http=$(curl -sS -o "$tmp" -w '%{http_code}' -X DELETE "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json"); then
     info "cloudflare unblock failed for $ip rule_id=$rule_id (curl error)"
+    rm -f "$tmp"
     return
   fi
-  http="${raw##*$'\n'}"
-  body="${raw%$'\n'"$http"}"
+  body="$(cat "$tmp")"
+  rm -f "$tmp"
   if [[ "$http" != "200" ]]; then
-    info "cloudflare unblock failed for $ip rule_id=$rule_id (http $http)"
+    local snippet="${body:0:200}"
+    info "cloudflare unblock failed for $ip rule_id=$rule_id (http $http, body=${snippet:-<empty>})"
     return
   fi
   parsed=$(cloudflare_parse_response <<<"$body")
