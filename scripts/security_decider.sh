@@ -67,7 +67,7 @@ AUTH_OFFSET=${AUTH_OFFSET:-"$STATE_DIR/auth.offset"}
 mkdir -p "$STATE_DIR" "$(dirname "$DECISIONS_LOG")"
 touch "$DECISIONS_LOG" "$ANON_FILE" "$FAIL_FILE" "$DYNAMIC_WHITELIST" "$BAN_FILE" "$REQUEST_OFFSET" "$AUTH_OFFSET"
 
-declare -A STATIC_WL DYN_USER DYN_EXP ANON_COUNT ANON_TS FAIL_COUNT FAIL_TS LAST_BAN
+declare -A STATIC_WL DYN_USER DYN_EXP ANON_COUNT ANON_TS FAIL_COUNT FAIL_TS LAST_BAN BAN_RULE_ID
 REQUESTS_SEEN=0
 AUTH_SEEN=0
 
@@ -130,6 +130,7 @@ cloudflare_block_ip() {
   parsed=$(cloudflare_parse_response <<<"$body")
   IFS='|' read -r status rule_id msg <<<"$parsed"
   if [[ "$status" == "ok" ]]; then
+    [[ -n "$rule_id" ]] && BAN_RULE_ID["$ip"]="$rule_id"
     if [[ -n "$rule_id" ]]; then
       info "cloudflare block applied: $ip rule_id=$rule_id reason=$reason"
     else
@@ -137,6 +138,41 @@ cloudflare_block_ip() {
     fi
   else
     info "cloudflare block failed for $ip: ${msg:-unknown error}"
+  fi
+}
+
+cloudflare_unblock_ip() {
+  local ip="$1" reason="$2" rule_id url http body parsed status msg tmp
+  cloudflare_configured || return
+  rule_id="${BAN_RULE_ID[$ip]:-}"
+  if [[ -z "$rule_id" ]]; then
+    info "cloudflare unblock skipped for $ip (no rule id)"
+    return
+  fi
+  url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules/${rule_id}"
+  tmp="$(mktemp)"
+  if ! http=$(curl -sS -o "$tmp" -w '%{http_code}' -X DELETE "$url" \
+    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    -H "Accept: application/json" \
+    -H "Content-Type: application/json"); then
+    info "cloudflare unblock failed for $ip rule_id=$rule_id (curl error)"
+    rm -f "$tmp"
+    return
+  fi
+  body="$(cat "$tmp")"
+  rm -f "$tmp"
+  if [[ "$http" != "200" ]]; then
+    local snippet="${body:0:200}"
+    info "cloudflare unblock failed for $ip rule_id=$rule_id (http $http, body=${snippet:-<empty>})"
+    return
+  fi
+  parsed=$(cloudflare_parse_response <<<"$body")
+  IFS='|' read -r status _ msg <<<"$parsed"
+  if [[ "$status" == "ok" ]]; then
+    info "cloudflare unblock applied: $ip reason=$reason rule_id=$rule_id"
+    unset BAN_RULE_ID["$ip"]
+  else
+    info "cloudflare unblock failed for $ip rule_id=$rule_id: ${msg:-unknown error}"
   fi
 }
 
@@ -230,16 +266,17 @@ prune_counts() {
 }
 
 load_bans() {
-  while IFS=$'\t' read -r ip ts _; do
+  while IFS=$'\t' read -r ip ts rule_id; do
     [[ -z "$ip" || -z "$ts" ]] && continue
     LAST_BAN["$ip"]="$ts"
+    [[ -n "$rule_id" ]] && BAN_RULE_ID["$ip"]="$rule_id"
   done <"$BAN_FILE"
 }
 
 save_bans() {
   : >"$BAN_FILE"
   for ip in "${!LAST_BAN[@]}"; do
-    echo -e "${ip}\t${LAST_BAN[$ip]}" >>"$BAN_FILE"
+    echo -e "${ip}\t${LAST_BAN[$ip]}\t${BAN_RULE_ID[$ip]:-}" >>"$BAN_FILE"
   done
 }
 
@@ -282,8 +319,10 @@ expire_bans() {
   for ip in "${!LAST_BAN[@]}"; do
     local last=${LAST_BAN[$ip]:-0}
     if (( now - last > BAN_DURATION )); then
-      # No automatic Cloudflare unblock; we only refresh local state so re-bans can happen if needed.
+      printf '%s SECURITY UNBAN %s reason=expired\n' "$(date --iso-8601=seconds)" "$ip" >>"$DECISIONS_LOG"
+      cloudflare_unblock_ip "$ip" "expired"
       unset LAST_BAN["$ip"]
+      unset BAN_RULE_ID["$ip"]
     fi
   done
 }
