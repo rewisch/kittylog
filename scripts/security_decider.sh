@@ -133,6 +133,11 @@ cloudflare_lookup_rule_id() {
   fi
   body="$(cat "$tmp")"
   rm -f "$tmp"
+  if [[ "$http" != "200" ]]; then
+    local snippet="${body:0:200}"
+    info "cloudflare lookup failed for $ip (http $http, body=${snippet:-<empty>})"
+    return 1
+  fi
   parsed=$(CLOUDFLARE_LOOKUP_IP="$ip" python - <<'PY' 2>/dev/null
 import json, os, sys
 
@@ -213,8 +218,16 @@ cloudflare_block_ip() {
     info "cloudflare block applied: $ip rule_id=$rule_id reason=$reason"
   elif cloudflare_record_existing_block "$ip" "$reason" "$body"; then
     return
+  elif cloudflare_record_existing_block "$ip" "$reason" "duplicate_of_existing"; then
+    # fallback for empty/odd responses that might still be duplicates
+    return
   else
     info "cloudflare block failed for $ip: ${msg:-unknown error}"
+    # final attempt: if we suspect the block exists but parsing failed, try lookup
+    if rule_id=$(cloudflare_lookup_rule_id "$ip"); then
+      BAN_RULE_ID["$ip"]="$rule_id"
+      info "cloudflare block assumed present after lookup: $ip rule_id=$rule_id reason=$reason"
+    fi
   fi
 }
 
@@ -222,6 +235,9 @@ cloudflare_unblock_ip() {
   local ip="$1" reason="$2" rule_id url http body parsed status msg tmp
   cloudflare_configured || return
   rule_id="${BAN_RULE_ID[$ip]:-}"
+  if [[ -n "$rule_id" && ! "$rule_id" =~ ^[A-Za-z0-9]+$ ]]; then
+    rule_id=""
+  fi
   if [[ -z "$rule_id" ]]; then
     rule_id=$(cloudflare_lookup_rule_id "$ip") || true
     if [[ -z "$rule_id" ]]; then
