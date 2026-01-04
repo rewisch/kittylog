@@ -118,12 +118,12 @@ PY
 }
 
 cloudflare_block_ip() {
-  local ip="$1" reason="$2" note payload url response parsed status rule_id msg
+  local ip="$1" reason="$2" note payload url raw http body parsed status rule_id msg
   cloudflare_configured || return
   note="kittylog ${reason}"
   payload=$(printf '{"mode":"block","configuration":{"target":"ip","value":"%s"},"notes":"%s"}' "$ip" "$note")
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules"
-  if ! response=$(curl -sS -X POST "$url" \
+  if ! raw=$(curl -sS -w '\n%{http_code}' -X POST "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json" \
@@ -131,7 +131,13 @@ cloudflare_block_ip() {
     info "cloudflare block failed for $ip (curl error)"
     return
   fi
-  parsed=$(cloudflare_parse_response <<<"$response")
+  http="${raw##*$'\n'}"
+  body="${raw%$'\n'"$http"}"
+  if [[ "$http" != "200" ]]; then
+    info "cloudflare block failed for $ip (http $http)"
+    return
+  fi
+  parsed=$(cloudflare_parse_response <<<"$body")
   IFS='|' read -r status rule_id msg <<<"$parsed"
   if [[ "$status" == "ok" && -n "$rule_id" ]]; then
     BAN_RULE_ID["$ip"]="$rule_id"
@@ -142,7 +148,7 @@ cloudflare_block_ip() {
 }
 
 cloudflare_unblock_ip() {
-  local ip="$1" reason="$2" rule_id url response parsed status msg
+  local ip="$1" reason="$2" rule_id url raw http body parsed status msg
   cloudflare_configured || return
   rule_id="${BAN_RULE_ID[$ip]:-}"
   if [[ -z "$rule_id" ]]; then
@@ -150,14 +156,20 @@ cloudflare_unblock_ip() {
     return
   fi
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules/${rule_id}"
-  if ! response=$(curl -sS -X DELETE "$url" \
+  if ! raw=$(curl -sS -w '\n%{http_code}' -X DELETE "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json"); then
     info "cloudflare unblock failed for $ip rule_id=$rule_id (curl error)"
     return
   fi
-  parsed=$(cloudflare_parse_response <<<"$response")
+  http="${raw##*$'\n'}"
+  body="${raw%$'\n'"$http"}"
+  if [[ "$http" != "200" ]]; then
+    info "cloudflare unblock failed for $ip rule_id=$rule_id (http $http)"
+    return
+  fi
+  parsed=$(cloudflare_parse_response <<<"$body")
   IFS='|' read -r status _ msg <<<"$parsed"
   if [[ "$status" == "ok" ]]; then
     info "cloudflare unblock applied: $ip reason=$reason"

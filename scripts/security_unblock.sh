@@ -97,10 +97,10 @@ PY
 }
 
 cloudflare_find_rule_id() {
-  local ip="$1" url response parsed status rule_id msg
+  local ip="$1" url http raw body parsed status rule_id msg
   cloudflare_configured || return
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules"
-  if ! response=$(curl -sS -G "$url" \
+  if ! raw=$(curl -sS -w '\n%{http_code}' -G "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json" \
@@ -111,7 +111,13 @@ cloudflare_find_rule_id() {
     info "cloudflare lookup failed for $ip (curl error)"
     return
   fi
-  parsed=$(cloudflare_parse_response <<<"$response")
+  http="${raw##*$'\n'}"
+  body="${raw%$'\n'"$http"}"
+  if [[ "$http" != "200" ]]; then
+    info "cloudflare lookup failed for $ip (http $http)"
+    return
+  fi
+  parsed=$(cloudflare_parse_response <<<"$body")
   IFS='|' read -r status rule_id msg <<<"$parsed"
   if [[ "$status" == "ok" && -n "$rule_id" ]]; then
     echo "$rule_id"
@@ -121,19 +127,25 @@ cloudflare_find_rule_id() {
 }
 
 cloudflare_unblock() {
-  local ip="$1" rule_id="$2" reason="$3" url response parsed status msg
+  local ip="$1" rule_id="$2" reason="$3" url raw http body parsed status msg
   cloudflare_configured || return
   [[ -z "$rule_id" ]] && rule_id=$(cloudflare_find_rule_id "$ip")
   [[ -z "$rule_id" ]] && { info "cloudflare unblock skipped for $ip (no rule id)"; return; }
   url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/firewall/access_rules/rules/${rule_id}"
-  if ! response=$(curl -sS -X DELETE "$url" \
+  if ! raw=$(curl -sS -w '\n%{http_code}' -X DELETE "$url" \
     -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json"); then
     info "cloudflare unblock failed for $ip rule_id=$rule_id (curl error)"
     return
   fi
-  parsed=$(cloudflare_parse_response <<<"$response")
+  http="${raw##*$'\n'}"
+  body="${raw%$'\n'"$http"}"
+  if [[ "$http" != "200" ]]; then
+    info "cloudflare unblock failed for $ip rule_id=$rule_id (http $http)"
+    return
+  fi
+  parsed=$(cloudflare_parse_response <<<"$body")
   IFS='|' read -r status _ msg <<<"$parsed"
   if [[ "$status" == "ok" ]]; then
     info "cloudflare unblock applied: $ip rule_id=$rule_id reason=$reason"
