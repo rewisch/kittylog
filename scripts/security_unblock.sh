@@ -47,7 +47,7 @@ mkdir -p "$STATE_DIR" "$(dirname "$DECISIONS_LOG")"
 touch "$BAN_FILE" "$DECISIONS_LOG"
 
 info() {
-  printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+  printf '[%s] %s\n' "$(date --iso-8601=seconds)" "$*" >&2
 }
 
 cloudflare_configured() {
