@@ -37,7 +37,7 @@ fi
 
 mkdir -p "$LOG_DIR"
 
-UVICORN_CMD=(uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1)
+UVICORN_CMD=(uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --workers 1)
 if [[ -f "$LOG_CONFIG" ]]; then
   UVICORN_CMD+=(--access-log --log-config "$LOG_CONFIG" --forwarded-allow-ips="*")
 fi
