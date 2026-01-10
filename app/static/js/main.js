@@ -108,4 +108,15 @@ document.addEventListener("DOMContentLoaded", () => {
     toggle.setAttribute("aria-expanded", String(isOpen));
   });
 
+  // Toggle mobile nav overflow
+  document.body.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-nav-toggle-target]");
+    if (!toggle) return;
+    const targetId = toggle.getAttribute("data-nav-toggle-target");
+    if (!targetId) return;
+    const panel = document.getElementById(targetId);
+    if (!panel) return;
+    panel.classList.toggle("hidden");
+  });
+
 });
