@@ -13,9 +13,3 @@ rules:
     task_slug: "feed"
     if_not_logged_today: true
     group: "morning-missing"
-
-  - id: "missing-water-0900"
-    time: "09:00"
-    task_slug: "water"
-    if_not_logged_today: true
-    group: "morning-missing"
