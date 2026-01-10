@@ -41,3 +41,24 @@ class TaskEvent(SQLModel, table=True):
 
     task_type: "TaskType" = Relationship(back_populates="events")
     cat: Optional["Cat"] = Relationship(back_populates="events")
+
+
+class PushSubscription(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user: str = Field(index=True, max_length=100)
+    endpoint: str = Field(unique=True, max_length=500)
+    p256dh: str = Field(max_length=200)
+    auth: str = Field(max_length=200)
+    user_agent: Optional[str] = Field(default=None, max_length=300)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    is_active: bool = Field(default=True, index=True)
+
+
+class NotificationLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    subscription_id: int = Field(foreign_key="pushsubscription.id", index=True)
+    rule_id: str = Field(index=True, max_length=100)
+    group_id: Optional[str] = Field(default=None, index=True, max_length=100)
+    day_key: str = Field(index=True, max_length=10)
+    sent_at: datetime = Field(default_factory=datetime.utcnow, index=True)

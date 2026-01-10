@@ -138,7 +138,9 @@ async def security_headers(request: Request, call_next):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "script-src 'self' https://cdn.tailwindcss.com; "
+        "manifest-src 'self'; "
         "connect-src 'self'; "
+        "worker-src 'self'; "
         "object-src 'none'; "
         "frame-ancestors 'none'"
     )

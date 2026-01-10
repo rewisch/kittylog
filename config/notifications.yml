@@ -1,0 +1,21 @@
+timezone: "Europe/Berlin"
+window_minutes: 5
+click_url: "/"
+
+groups:
+  morning-missing:
+    title: "KittyLog reminder"
+    message: "Still missing today: {tasks}."
+
+rules:
+  - id: "missing-feed-0900"
+    time: "09:00"
+    task_slug: "feed"
+    if_not_logged_today: true
+    group: "morning-missing"
+
+  - id: "missing-water-0900"
+    time: "09:00"
+    task_slug: "water"
+    if_not_logged_today: true
+    group: "morning-missing"

@@ -81,6 +81,24 @@ Fields: `slug` (unique), `name`, `order` (integer for sorting), `icon` (emoji/te
 
 Colors: If you omit `color` (or repeat colors), the app assigns unique colors per task from this palette: `amber`, `blue`, `cyan`, `emerald`, `fuchsia`, `green`, `indigo`, `lime`, `orange`, `pink`, `purple`, `red`, `rose`, `sky`, `teal`, `violet`, `yellow`.
 
+## Push notifications (PWA)
+KittyLog supports Web Push for users who add the app to their home screen (iOS 16.4+ / modern Android). Setup:
+
+```bash
+pip install -r requirements.txt
+./scripts/setup_push_notifications.sh
+```
+
+This generates VAPID keys in `config/push_keys.yml`, creates a sample `config/notifications.yml`, and ensures DB tables exist. Edit `config/notifications.yml` to define reminder rules.
+
+Run the dispatcher on a schedule (cron/systemd timer). Example cron (every minute):
+
+```bash
+* * * * * /path/to/kittylog/.venv/bin/python /path/to/kittylog/scripts/dispatch_notifications.py
+```
+
+After the server is running over HTTPS, add KittyLog to the phone home screen, open the dashboard, and click “Enable notifications”.
+
 ## Cats
 - Manage cats at `/cats` (name, color, birthday, chip ID, optional photo, active flag).
 - When a task has `requires_cat: true` in `config/tasks.yml`, the dashboard and QR flow require selecting a cat; logging is rejected if no cat is provided.

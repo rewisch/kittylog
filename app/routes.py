@@ -12,6 +12,7 @@ from urllib.parse import quote, urlencode, urlparse
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
 
@@ -25,7 +26,8 @@ from .auth import (
 from .database import get_session
 from .settings import get_settings
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
-from .models import Cat, TaskEvent, TaskType
+from .models import Cat, PushSubscription, TaskEvent, TaskType
+from .push_config import get_push_settings
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -34,6 +36,15 @@ templates.env.globals["supported_langs"] = SUPPORTED_LANGS
 router = APIRouter()
 PER_PAGE = 20
 CAT_UPLOAD_DIR = Path(__file__).parent / "static" / "uploads" / "cats"
+
+
+class PushSubscriptionIn(BaseModel):
+    endpoint: str
+    keys: dict[str, str]
+
+
+class PushUnsubscribeIn(BaseModel):
+    endpoint: str
 
 
 def require_user(request: Request) -> str:
@@ -327,6 +338,7 @@ def dashboard(
 ) -> Any:
     lang = resolve_language(request)
     ensure_csrf_token(request)
+    push_settings = get_push_settings()
     all_cats = session.exec(
         select(Cat)
         .order_by(Cat.is_active.desc(), Cat.name)
@@ -358,11 +370,85 @@ def dashboard(
             "recency_state": recency_state,
             "lang": lang,
             "user": user,
+            "vapid_public_key": push_settings.vapid_public_key,
         },
     )
     if request.query_params.get("lang"):
         response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
     return response
+
+
+@router.get("/api/push/public-key")
+def push_public_key() -> dict[str, str | None]:
+    settings = get_push_settings()
+    return {"public_key": settings.vapid_public_key}
+
+
+@router.post("/api/push/subscribe")
+def push_subscribe(
+    payload: PushSubscriptionIn,
+    request: Request,
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    csrf_token = request.headers.get("X-CSRF-Token", "")
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
+    endpoint = payload.endpoint.strip()
+    keys = payload.keys or {}
+    p256dh = (keys.get("p256dh") or "").strip()
+    auth = (keys.get("auth") or "").strip()
+    if not endpoint or not p256dh or not auth:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subscription payload")
+
+    existing = session.exec(
+        select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+    ).first()
+    now = datetime.utcnow()
+    if existing:
+        existing.user = user
+        existing.p256dh = p256dh
+        existing.auth = auth
+        existing.last_seen_at = now
+        existing.is_active = True
+    else:
+        session.add(
+            PushSubscription(
+                user=user,
+                endpoint=endpoint,
+                p256dh=p256dh,
+                auth=auth,
+                user_agent=request.headers.get("user-agent"),
+                created_at=now,
+                last_seen_at=now,
+                is_active=True,
+            )
+        )
+    session.commit()
+    return {"status": "ok"}
+
+
+@router.post("/api/push/unsubscribe")
+def push_unsubscribe(
+    payload: PushUnsubscribeIn,
+    request: Request,
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    csrf_token = request.headers.get("X-CSRF-Token", "")
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
+    endpoint = payload.endpoint.strip()
+    if not endpoint:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid subscription payload")
+    existing = session.exec(
+        select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+    ).first()
+    if existing:
+        existing.is_active = False
+        existing.last_seen_at = datetime.utcnow()
+        session.commit()
+    return {"status": "ok"}
 
 
 @router.get("/cats", response_class=HTMLResponse)
