@@ -7,31 +7,6 @@
     <p class="text-slate-400 text-sm">{{ t("dashboard_subtitle", lang) }}</p>
 </div>
 
-<div
-    id="push-card"
-    class="mb-6 rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30"
-    data-vapid-key="{{ vapid_public_key or '' }}"
-    data-csrf-token="{{ request.session.get('csrf_token') }}"
-    data-install-hint="{{ t('push_install_hint', lang) }}"
-    data-enabled-label="{{ t('push_enabled_label', lang) }}"
-    data-blocked-label="{{ t('push_blocked_label', lang) }}"
-    data-permission-label="{{ t('push_permission_label', lang) }}"
-    data-not-configured-label="{{ t('push_not_configured', lang) }}"
->
-    <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-            <p class="text-sm font-semibold">{{ t("push_title", lang) }}</p>
-            <p class="text-xs text-slate-400" data-push-description>{{ t("push_description", lang) }}</p>
-        </div>
-        <div class="flex items-center gap-3">
-            <button type="button" data-push-enable class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10 text-xs">
-                {{ t("push_enable_button", lang) }}
-            </button>
-            <span class="text-xs text-slate-400" data-push-status></span>
-        </div>
-    </div>
-</div>
-
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="tasks-grid">
     {% for task in tasks %}
     {% set ev = last_events.get(task.id) %}

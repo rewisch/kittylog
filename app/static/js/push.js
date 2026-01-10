@@ -48,22 +48,39 @@ async function sendSubscription(card, subscription) {
   }
 }
 
+async function disableSubscription(card, subscription) {
+  const csrfToken = card.dataset.csrfToken || "";
+  await fetch("/api/push/unsubscribe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken,
+    },
+    body: JSON.stringify({ endpoint: subscription.endpoint }),
+  });
+  await subscription.unsubscribe();
+}
+
 async function initPushCard() {
   const card = document.getElementById("push-card");
   if (!card) return;
 
   const supportsPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const enableButton = card.querySelector("[data-push-enable]");
+  const disableButton = card.querySelector("[data-push-disable]");
+  if (!enableButton || !disableButton) return;
   if (!supportsPush) {
-    card.classList.add("hidden");
+    enableButton.disabled = true;
+    disableButton.disabled = true;
+    setPushStatus(card, card.dataset.notSupportedLabel || "Notifications not supported.", "warn");
     return;
   }
 
   const vapidKey = card.dataset.vapidKey || "";
-  const enableButton = card.querySelector("[data-push-enable]");
-  if (!enableButton) return;
 
   if (!vapidKey) {
     enableButton.disabled = true;
+    disableButton.disabled = true;
     setPushStatus(card, card.dataset.notConfiguredLabel || "Notifications not configured.", "warn");
     return;
   }
@@ -81,16 +98,18 @@ async function initPushCard() {
       await sendSubscription(card, existing);
       setPushStatus(card, card.dataset.enabledLabel || "Notifications enabled.", "good");
       enableButton.disabled = true;
+      disableButton.disabled = false;
     } catch (err) {
       setPushStatus(card, err.message, "bad");
     }
-    return;
-  }
-
-  if (Notification.permission === "denied") {
-    enableButton.disabled = true;
-    setPushStatus(card, card.dataset.blockedLabel || "Notifications blocked in browser settings.", "bad");
-    return;
+  } else {
+    disableButton.disabled = true;
+    if (Notification.permission === "denied") {
+      setPushStatus(card, card.dataset.blockedLabel || "Notifications blocked in browser settings.", "bad");
+      enableButton.disabled = true;
+    } else {
+      setPushStatus(card, card.dataset.disabledLabel || "Notifications disabled.", "neutral");
+    }
   }
 
   enableButton.addEventListener("click", async () => {
@@ -108,9 +127,25 @@ async function initPushCard() {
       });
       await sendSubscription(card, subscription);
       setPushStatus(card, card.dataset.enabledLabel || "Notifications enabled.", "good");
+      disableButton.disabled = false;
     } catch (err) {
       setPushStatus(card, err.message || "Unable to enable notifications.", "bad");
       enableButton.disabled = false;
+    }
+  });
+
+  disableButton.addEventListener("click", async () => {
+    disableButton.disabled = true;
+    try {
+      const current = await registration.pushManager.getSubscription();
+      if (current) {
+        await disableSubscription(card, current);
+      }
+      setPushStatus(card, card.dataset.disabledLabel || "Notifications disabled.", "neutral");
+      enableButton.disabled = false;
+    } catch (err) {
+      setPushStatus(card, err.message || "Unable to disable notifications.", "bad");
+      disableButton.disabled = false;
     }
   });
 }

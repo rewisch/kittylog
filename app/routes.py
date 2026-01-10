@@ -476,6 +476,28 @@ def cats_page(
     return response
 
 
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(
+    request: Request,
+    user: str = Depends(require_user),
+) -> Any:
+    lang = resolve_language(request)
+    ensure_csrf_token(request)
+    push_settings = get_push_settings()
+    response = templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "lang": lang,
+            "user": user,
+            "vapid_public_key": push_settings.vapid_public_key,
+        },
+    )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
 @router.post("/cats", response_class=HTMLResponse)
 def create_cat(
     request: Request,

@@ -107,4 +107,5 @@ document.addEventListener("DOMContentLoaded", () => {
     const isOpen = !panel.classList.contains("hidden");
     toggle.setAttribute("aria-expanded", String(isOpen));
   });
+
 });

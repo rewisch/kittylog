@@ -11,8 +11,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/custom.css">
-    <script src="/static/js/main.js" defer></script>
-    <script src="/static/js/push.js" defer></script>
+    <script src="/static/js/main.js?v=1" defer></script>
+    <script src="/static/js/push.js?v=1" defer></script>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 font-display">
     <div class="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),transparent_40%),radial-gradient(circle_at_bottom,_rgba(244,114,182,0.1),transparent_35%)]"></div>
@@ -30,6 +30,7 @@
                     <a href="/?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_dashboard", lang) }}</a>
                     <a href="/history?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_history", lang) }}</a>
                     <a href="/cats?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_cats", lang) }}</a>
+                    <a href="/settings?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_settings", lang) }}</a>
                     <div class="flex items-center gap-1 text-xs text-slate-400">
                         {% for code in supported_langs %}
                         <a href="{{ request.url.path }}?lang={{ code }}" class="px-3 py-2 rounded-lg border border-white/5 hover:border-white/20 {{ 'bg-white/10 text-slate-100' if lang==code else 'text-slate-400' }}">{{ code.upper() }}</a>
