@@ -53,7 +53,8 @@ if [[ ! -d "$REPO_ROOT" ]]; then
   exit 1
 fi
 
-UNIT_DIR="/home/kittylog/.config/systemd/user"
+USER_HOME="/home/kittylog"
+UNIT_DIR="${USER_HOME}/.config/systemd/user"
 mkdir -p "$UNIT_DIR"
 
 cat <<SERVICE > "$UNIT_DIR/kittylog-notify.service"
@@ -83,7 +84,7 @@ AccuracySec=30s
 WantedBy=timers.target
 TIMER
 
-chown -R kittylog:kittylog /home/kittylog/.config
+chown -R kittylog:kittylog "${USER_HOME}/.config"
 loginctl enable-linger kittylog
 
 uid="$(id -u kittylog)"
@@ -91,11 +92,11 @@ runtime_dir="/run/user/${uid}"
 mkdir -p "$runtime_dir"
 chown kittylog:kittylog "$runtime_dir"
 
-sudo -u kittylog XDG_RUNTIME_DIR="$runtime_dir" systemctl --user daemon-reload
-sudo -u kittylog XDG_RUNTIME_DIR="$runtime_dir" systemctl --user enable --now kittylog-notify.timer
+sudo -u kittylog HOME="$USER_HOME" XDG_CONFIG_HOME="${USER_HOME}/.config" XDG_RUNTIME_DIR="$runtime_dir" systemctl --user daemon-reload
+sudo -u kittylog HOME="$USER_HOME" XDG_CONFIG_HOME="${USER_HOME}/.config" XDG_RUNTIME_DIR="$runtime_dir" systemctl --user enable --now kittylog-notify.timer
 
 cat <<'DONE'
 Installed systemd user timer for kittylog.
 Check status with:
-  sudo -u kittylog XDG_RUNTIME_DIR="/run/user/$(id -u kittylog)" systemctl --user status kittylog-notify.timer
+  sudo -u kittylog HOME="$USER_HOME" XDG_CONFIG_HOME="${USER_HOME}/.config" XDG_RUNTIME_DIR="/run/user/$(id -u kittylog)" systemctl --user status kittylog-notify.timer
 DONE
