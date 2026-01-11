@@ -17,6 +17,12 @@ DB and task types are created/updated on startup.
 If running over cloudflare:
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --workers 1
 
+## Tests
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
 ## Server logging
 - Uvicorn/app logging is configured in `config/logging.yml`.
 - Logs live in the `logs/` directory by default (`logs/kittylog.log`, `logs/kittylog.access.log`, `logs/kittylog.requests.log`). Change the filenames in `config/logging.yml` if you prefer `/var/log/kittylog/` (make sure the process can write there).

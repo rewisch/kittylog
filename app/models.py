@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
@@ -29,11 +29,15 @@ class Cat(SQLModel, table=True):
     events: List["TaskEvent"] = Relationship(back_populates="cat")
 
 
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class TaskEvent(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     task_type_id: int = Field(foreign_key="tasktype.id", index=True)
     cat_id: Optional[int] = Field(default=None, foreign_key="cat.id", index=True)
-    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
+    timestamp: datetime = Field(default_factory=utcnow, index=True)
     who: Optional[str] = Field(default=None, max_length=100)
     source: Optional[str] = Field(default=None, max_length=50)
     note: Optional[str] = Field(default=None, max_length=500)
@@ -50,8 +54,8 @@ class PushSubscription(SQLModel, table=True):
     p256dh: str = Field(max_length=200)
     auth: str = Field(max_length=200)
     user_agent: Optional[str] = Field(default=None, max_length=300)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    last_seen_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    last_seen_at: datetime = Field(default_factory=utcnow, index=True)
     is_active: bool = Field(default=True, index=True)
 
 
@@ -61,4 +65,4 @@ class NotificationLog(SQLModel, table=True):
     rule_id: str = Field(index=True, max_length=100)
     group_id: Optional[str] = Field(default=None, index=True, max_length=100)
     day_key: str = Field(index=True, max_length=10)
-    sent_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    sent_at: datetime = Field(default_factory=utcnow, index=True)

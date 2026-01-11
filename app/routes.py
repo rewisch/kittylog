@@ -197,11 +197,15 @@ def parse_timestamp_value(raw_value: str | None) -> datetime:
     return parsed
 
 
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def humanize_timestamp(ts: datetime | None, lang: str = "en") -> str:
     """Return a short relative time string."""
     if ts is None:
         return "Never" if lang == "en" else "Noch nie"
-    delta = datetime.utcnow() - ts
+    delta = now_utc() - ts
     if delta < timedelta(minutes=1):
         return "just now" if lang == "en" else "gerade eben"
     if delta < timedelta(hours=1):
@@ -221,7 +225,7 @@ def recency_state(ts: datetime | None) -> str:
     """Return recency bucket: fresh, warm, stale, never."""
     if ts is None:
         return "never"
-    delta = datetime.utcnow() - ts
+    delta = now_utc() - ts
     if delta < timedelta(hours=6):
         return "fresh"
     if delta < timedelta(days=1):
@@ -259,6 +263,7 @@ def login_form(request: Request, next: str = Query("/")) -> Any:
         return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
     request.session["csrf_token"] = generate_csrf_token()
     return templates.TemplateResponse(
+        request,
         "login.html",
         {
             "request": request,
@@ -287,6 +292,7 @@ def login_submit(
     if not check_rate_limit(rate_key):
         log_auth_event(username, client_ip, False, reason="rate_limit")
         return templates.TemplateResponse(
+            request,
             "login.html",
             {
                 "request": request,
@@ -304,6 +310,7 @@ def login_submit(
         return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
     log_auth_event(username, client_ip, False, reason="invalid_credentials")
     return templates.TemplateResponse(
+        request,
         "login.html",
         {
             "request": request,
@@ -360,6 +367,7 @@ def dashboard(
             .limit(1)
         ).first()
     response = templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
             "request": request,
@@ -390,7 +398,7 @@ def insights(
 ) -> Any:
     lang = resolve_language(request)
     ensure_csrf_token(request)
-    now = datetime.utcnow()
+    now = now_utc()
     since_7 = now - timedelta(days=7)
     since_30 = now - timedelta(days=30)
 
@@ -577,6 +585,7 @@ def insights(
         task_time.append(entry)
 
     response = templates.TemplateResponse(
+        request,
         "insights.html",
         {
             "request": request,
@@ -629,7 +638,7 @@ def push_subscribe(
     existing = session.exec(
         select(PushSubscription).where(PushSubscription.endpoint == endpoint)
     ).first()
-    now = datetime.utcnow()
+    now = now_utc()
     if existing:
         existing.user = user
         existing.p256dh = p256dh
@@ -671,7 +680,7 @@ def push_unsubscribe(
     ).first()
     if existing:
         existing.is_active = False
-        existing.last_seen_at = datetime.utcnow()
+        existing.last_seen_at = now_utc()
         session.commit()
     return {"status": "ok"}
 
@@ -688,6 +697,7 @@ def cats_page(
         select(Cat).order_by(Cat.is_active.desc(), Cat.name)
     ).all()
     response = templates.TemplateResponse(
+        request,
         "cats.html",
         {
             "request": request,
@@ -710,6 +720,7 @@ def settings_page(
     ensure_csrf_token(request)
     push_settings = get_push_settings()
     response = templates.TemplateResponse(
+        request,
         "settings.html",
         {
             "request": request,
@@ -919,9 +930,10 @@ def history(
     }
 
     response = templates.TemplateResponse(
+        request,
         "history.html",
         {
-        "request": request,
+            "request": request,
             "events": events,
             "tasks": task_types,
             "task_map": task_map,
@@ -1040,6 +1052,7 @@ def log_task(
     cat = validate_cat_for_task(session, task, cat_id_value)
     event = create_event(session, task, actor, note, source="web", cat_id=cat.id if cat else None)
     response = templates.TemplateResponse(
+        request,
         "qr_confirm.html",
         {
             "request": request,
@@ -1089,6 +1102,7 @@ def qr_landing(
         cat = validate_cat_for_task(session, task, parsed_cat_id)
         event = create_event(session, task, user, note, source="qr", cat_id=cat.id if cat else None)
         response = templates.TemplateResponse(
+            request,
             "qr_confirm.html",
             {
                 "request": request,
@@ -1103,6 +1117,7 @@ def qr_landing(
         )
     else:
         response = templates.TemplateResponse(
+            request,
             "qr_confirm.html",
             {
                 "request": request,
@@ -1142,6 +1157,7 @@ def qr_confirm(
     cat = validate_cat_for_task(session, task, cat_id_value)
     event = create_event(session, task, user, note, source="qr", cat_id=cat.id if cat else None)
     response = templates.TemplateResponse(
+        request,
         "qr_confirm.html",
         {
             "request": request,

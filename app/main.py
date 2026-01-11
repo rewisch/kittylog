@@ -4,6 +4,7 @@ import logging
 import os
 import secrets
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -20,7 +21,6 @@ from .routes import router
 from .settings import load_settings
 
 
-app = FastAPI(title="KittyLog")
 ENV_PATH = Path(__file__).resolve().parent.parent / "config" / "kittylog.env"
 
 
@@ -70,6 +70,22 @@ def _ensure_secret_key() -> str:
     return secret
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    repo_root = Path(__file__).resolve().parent.parent
+    run_startup_migrations(repo_root)
+    settings_path = repo_root / "config" / "settings.yml"
+    settings = load_settings(settings_path)
+    configure_engine(settings.db_path)
+    create_db_and_tables()
+    config_path = repo_root / "config" / "tasks.yml"
+    configs = load_task_configs(config_path)
+    with Session(get_engine()) as session:
+        sync_task_types(session, configs)
+    yield
+
+
+app = FastAPI(title="KittyLog", lifespan=lifespan)
 secret_key = _ensure_secret_key()
 cookie_secure = os.getenv("KITTYLOG_SESSION_SECURE", "false").lower() == "true"
 app.add_middleware(
@@ -150,20 +166,6 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
     return response
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    repo_root = Path(__file__).resolve().parent.parent
-    run_startup_migrations(repo_root)
-    settings_path = repo_root / "config" / "settings.yml"
-    settings = load_settings(settings_path)
-    configure_engine(settings.db_path)
-    create_db_and_tables()
-    config_path = repo_root / "config" / "tasks.yml"
-    configs = load_task_configs(config_path)
-    with Session(get_engine()) as session:
-        sync_task_types(session, configs)
 
 
 @app.get("/health")

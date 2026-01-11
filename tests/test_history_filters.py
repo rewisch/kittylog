@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
@@ -11,7 +11,7 @@ from .conftest import extract_csrf_token, login_user, write_users_file
 
 
 def _seed_events() -> tuple[int, int]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     with Session(get_engine()) as session:
         task = session.exec(select(TaskType).where(TaskType.slug == "feed")).first()
         assert task is not None
@@ -49,7 +49,7 @@ def test_history_filters_by_cat_and_date(client, users_file, monkeypatch) -> Non
     login_user(client, "Livia", "secret")
     _, cat_id = _seed_events()
 
-    today = datetime.utcnow().date().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
     response = client.get(f"/history?cat={cat_id}&start_date={today}&end_date={today}")
     assert response.status_code == 200
     assert "today" in response.text

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
@@ -23,7 +23,7 @@ def test_insights_date_filtering(client, users_file, monkeypatch) -> None:
                 task_type_id=task.id,
                 who="Livia",
                 source="web",
-                timestamp=datetime.utcnow() - timedelta(days=10),
+                timestamp=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10),
             )
         )
         session.add(
@@ -31,7 +31,7 @@ def test_insights_date_filtering(client, users_file, monkeypatch) -> None:
                 task_type_id=task.id,
                 who="Livia",
                 source="web",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
             )
         )
         session.commit()
@@ -40,7 +40,7 @@ def test_insights_date_filtering(client, users_file, monkeypatch) -> None:
     assert response.status_code == 200
     assert ">2<" in response.text
 
-    future = (datetime.utcnow().date() + timedelta(days=1)).isoformat()
+    future = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
     response = client.get(f"/insights?start_date={future}&end_date={future}")
     assert response.status_code == 200
     assert ">0<" in response.text
