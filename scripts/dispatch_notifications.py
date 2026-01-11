@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 from dataclasses import dataclass
-from datetime import datetime, time as dt_time, timedelta, timezone
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 import json
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.database import configure_engine, create_db_and_tables, get_engine  # noqa: E402
-from app.models import NotificationLog, PushSubscription, TaskEvent, TaskType  # noqa: E402
+from app.models import Cat, NotificationLog, PushSubscription, TaskEvent, TaskType  # noqa: E402
 from app.push_config import load_push_settings  # noqa: E402
 from app.settings import load_settings  # noqa: E402
 
@@ -44,12 +45,22 @@ class RuleConfig:
 
 
 @dataclass
+class EventConfig:
+    event_id: str
+    event_type: str
+    months: list[int] | None
+    title: str | None
+    message: str | None
+
+
+@dataclass
 class NotificationConfig:
     timezone: ZoneInfo
     window_minutes: int
     click_url: str
     groups: dict[str, GroupConfig]
     rules: list[RuleConfig]
+    events: list[EventConfig]
 
 
 def _parse_time(value: str) -> dt_time:
@@ -136,12 +147,49 @@ def load_notification_config(path: Path) -> NotificationConfig:
     if not rules:
         raise ValueError("No rules configured in notifications.yml")
 
+    events: list[EventConfig] = []
+    for item in data.get("events") or []:
+        if not isinstance(item, dict):
+            continue
+        event_id = str(item.get("id") or "").strip()
+        if not event_id:
+            raise ValueError("Each event must have a non-empty id")
+        event_type = str(item.get("type") or "").strip()
+        if not event_type:
+            raise ValueError(f"Event '{event_id}' is missing type")
+        raw_months = item.get("months")
+        months: list[int] | None = None
+        if raw_months is not None:
+            if not isinstance(raw_months, list):
+                raise ValueError(f"Event '{event_id}' months must be a list of integers")
+            months = []
+            for value in raw_months:
+                try:
+                    month_value = int(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"Event '{event_id}' months must be integers") from exc
+                if month_value <= 0:
+                    raise ValueError(f"Event '{event_id}' months must be > 0")
+                months.append(month_value)
+        title = str(item.get("title") or "").strip() or None
+        message = str(item.get("message") or "").strip() or None
+        events.append(
+            EventConfig(
+                event_id=event_id,
+                event_type=event_type,
+                months=months,
+                title=title,
+                message=message,
+            )
+        )
+
     return NotificationConfig(
         timezone=timezone_obj,
         window_minutes=window_minutes,
         click_url=click_url,
         groups=groups,
         rules=rules,
+        events=events,
     )
 
 
@@ -168,6 +216,21 @@ def days_since_last_event(last_ts: datetime | None, now_local: datetime) -> int 
         return None
     last_local = last_ts.replace(tzinfo=timezone.utc).astimezone(now_local.tzinfo)
     return (now_local.date() - last_local.date()).days
+
+
+def birthday_matches(birthday: date, today: date) -> bool:
+    if birthday.month == 2 and birthday.day == 29 and not calendar.isleap(today.year):
+        return today.month == 2 and today.day == 28
+    return birthday.month == today.month and birthday.day == today.day
+
+
+def months_since_birth(birthday: date, today: date) -> int | None:
+    if today.day != birthday.day:
+        return None
+    months = (today.year - birthday.year) * 12 + (today.month - birthday.month)
+    if months < 0:
+        return None
+    return months
 
 
 def _ensure_pywebpush_curve() -> None:
@@ -337,7 +400,58 @@ def main(argv: list[str] | None = None) -> int:
                         continue
             triggered.append((rule, task))
 
-        if not triggered:
+        event_payloads: list[tuple[str, str, str]] = []
+        if config.events:
+            active_cats = session.exec(
+                select(Cat).where(Cat.is_active == True)  # noqa: E712
+            ).all()
+            today = now_local.date()
+            event_by_type = {event.event_type: event for event in config.events}
+
+            birthday_event = event_by_type.get("cat_birthday")
+            if birthday_event:
+                birthday_cats = []
+                for cat in active_cats:
+                    if cat.birthday and birthday_matches(cat.birthday, today):
+                        years = today.year - cat.birthday.year
+                        birthday_cats.append({"name": cat.name, "years": years})
+                if birthday_cats:
+                    cats_list = ", ".join(cat["name"] for cat in birthday_cats)
+                    title = birthday_event.title or "KittyLog"
+                    message_template = birthday_event.message or "Birthday today: {cats}."
+                    message = message_template.format(
+                        cat=birthday_cats[0]["name"],
+                        cats=cats_list,
+                        count=len(birthday_cats),
+                        years=birthday_cats[0]["years"],
+                    )
+                    event_payloads.append((birthday_event.event_id, title, message))
+
+            milestone_event = event_by_type.get("cat_milestone")
+            if milestone_event and milestone_event.months:
+                milestones = []
+                for cat in active_cats:
+                    if not cat.birthday:
+                        continue
+                    months = months_since_birth(cat.birthday, today)
+                    if months is not None and months in milestone_event.months:
+                        milestones.append({"name": cat.name, "months": months})
+                if milestones:
+                    items_text = ", ".join(
+                        f"{item['name']} ({item['months']}m)" for item in milestones
+                    )
+                    title = milestone_event.title or "KittyLog"
+                    message_template = milestone_event.message or "Milestones today: {items}."
+                    message = message_template.format(
+                        cat=milestones[0]["name"],
+                        cats=", ".join(item["name"] for item in milestones),
+                        count=len(milestones),
+                        months=milestones[0]["months"],
+                        items=items_text,
+                    )
+                    event_payloads.append((milestone_event.event_id, title, message))
+
+        if not triggered and not event_payloads:
             print("No rules triggered.")
             return 0
 
@@ -432,6 +546,40 @@ def main(argv: list[str] | None = None) -> int:
                         NotificationLog(
                             subscription_id=subscription.id,
                             rule_id=rule.rule_id,
+                            group_id=None,
+                            day_key=day_key,
+                        )
+                    )
+                    sent_keys.add(key)
+                    notifications_sent += 1
+                except WebPushException as exc:
+                    status = exc.response and exc.response.status_code
+                    print(f"Push failed for {subscription.endpoint}: {exc}", file=sys.stderr)
+                    if status in (404, 410):
+                        subscription.is_active = False
+                if not args.dry_run:
+                    session.commit()
+
+            for event_id, title, message in event_payloads:
+                key = (subscription.id, event_id)
+                if key in sent_keys:
+                    continue
+                if args.dry_run:
+                    print(f"[dry-run] {subscription.user}: {title} - {message}")
+                    continue
+                try:
+                    send_web_push(
+                        subscription,
+                        title,
+                        message,
+                        config.click_url,
+                        push_settings.vapid_private_key,
+                        push_settings.vapid_subject,
+                    )
+                    session.add(
+                        NotificationLog(
+                            subscription_id=subscription.id,
+                            rule_id=event_id,
                             group_id=None,
                             day_key=day_key,
                         )

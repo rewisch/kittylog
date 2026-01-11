@@ -37,6 +37,18 @@ rules:
     task_slug: "water"
     if_not_logged_today: true
     group: "morning-missing"
+
+events:
+  - id: "cat-birthday"
+    type: "cat_birthday"
+    title: "KittyLog"
+    message: "Birthday today: {cats}."
+
+  - id: "cat-milestone"
+    type: "cat_milestone"
+    months: [6, 12, 24, 36, 60, 120]
+    title: "KittyLog"
+    message: "Milestones today: {items}."
 RULES
   echo "Wrote sample rules to $RULES_FILE"
 else

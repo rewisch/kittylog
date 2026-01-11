@@ -34,6 +34,41 @@ main {
     animation: slide-in 0.3s ease, fade-out 0.6s ease 3s forwards;
 }
 
+.tooltip-bar {
+    position: relative;
+}
+
+.tooltip-wrap {
+    position: relative;
+    z-index: 1;
+}
+
+.tooltip-bar::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    transform: translate(-50%, -6px);
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 20;
+}
+
+.tooltip-bar:hover::after,
+.tooltip-bar:focus-visible::after,
+.tooltip-bar.tooltip-open::after {
+    opacity: 1;
+    transform: translate(-50%, -10px);
+}
+
 @keyframes shimmer {
     100% {
         transform: translateX(100%);

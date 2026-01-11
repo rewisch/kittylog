@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlmodel import Session, select
 
 from .auth import (
@@ -22,6 +22,7 @@ from .auth import (
     log_auth_event,
     generate_csrf_token,
     validate_csrf_token,
+    resolve_user_name,
 )
 from .database import get_session
 from .settings import get_settings
@@ -371,6 +372,230 @@ def dashboard(
             "lang": lang,
             "user": user,
             "vapid_public_key": push_settings.vapid_public_key,
+        },
+    )
+    if request.query_params.get("lang"):
+        response.set_cookie("lang", lang, max_age=30 * 24 * 3600)
+    return response
+
+
+@router.get("/insights", response_class=HTMLResponse)
+def insights(
+    request: Request,
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+    preset: str | None = Query(None, pattern="^(today|7d|30d)$"),
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> Any:
+    lang = resolve_language(request)
+    ensure_csrf_token(request)
+    now = datetime.utcnow()
+    since_7 = now - timedelta(days=7)
+    since_30 = now - timedelta(days=30)
+
+    start_date_value = parse_date_param(start_date, "start_date")
+    end_date_value = parse_date_param(end_date, "end_date")
+    if preset and not start_date_value and not end_date_value:
+        today = date.today()
+        if preset == "today":
+            start_date_value = today
+            end_date_value = today
+        elif preset == "7d":
+            start_date_value = today - timedelta(days=6)
+            end_date_value = today
+        elif preset == "30d":
+            start_date_value = today - timedelta(days=29)
+            end_date_value = today
+
+    event_filters = [TaskEvent.deleted == False]  # noqa: E712
+    if start_date_value:
+        start_dt = datetime.combine(start_date_value, time.min)
+        event_filters.append(TaskEvent.timestamp >= start_dt)
+    if end_date_value:
+        end_dt = datetime.combine(end_date_value, time.max)
+        event_filters.append(TaskEvent.timestamp <= end_dt)
+
+    total_all = session.exec(
+        select(func.count()).select_from(TaskEvent).where(*event_filters)
+    ).one()
+    total_7d = session.exec(
+        select(func.count())
+        .select_from(TaskEvent)
+        .where(TaskEvent.deleted == False, TaskEvent.timestamp >= since_7)  # noqa: E712
+    ).one()
+    total_30d = session.exec(
+        select(func.count())
+        .select_from(TaskEvent)
+        .where(TaskEvent.deleted == False, TaskEvent.timestamp >= since_30)  # noqa: E712
+    ).one()
+
+    task_rows = session.exec(
+        select(TaskType.id, TaskType.name, TaskType.icon, func.count(TaskEvent.id))
+        .join(TaskEvent, TaskEvent.task_type_id == TaskType.id)
+        .where(
+            TaskType.is_active == True,  # noqa: E712
+            *event_filters,
+        )
+        .group_by(TaskType.id)
+        .order_by(func.count(TaskEvent.id).desc())
+    ).all()
+    top_tasks = [
+        {"id": row[0], "name": row[1], "icon": row[2], "count": int(row[3])}
+        for row in task_rows
+    ]
+
+    user_rows = session.exec(
+        select(TaskEvent.who, func.count(TaskEvent.id))
+        .where(*event_filters)
+        .group_by(TaskEvent.who)
+        .order_by(func.count(TaskEvent.id).desc())
+    ).all()
+    top_users = []
+    for who, count in user_rows:
+        name = (who or "").strip() if who else ""
+        top_users.append({"name": name or None, "count": int(count)})
+
+    cat_rows = session.exec(
+        select(Cat.id, Cat.name, func.count(TaskEvent.id))
+        .join(TaskEvent, TaskEvent.cat_id == Cat.id)
+        .where(*event_filters)
+        .group_by(Cat.id)
+        .order_by(func.count(TaskEvent.id).desc())
+    ).all()
+    cat_counts = [
+        {"id": row[0], "name": row[1], "count": int(row[2])}
+        for row in cat_rows
+    ]
+    cat_logged_total = sum(item["count"] for item in cat_counts)
+    no_cat_count = max(int(total_30d) - cat_logged_total, 0)
+
+    hour_rows = session.exec(
+        select(func.strftime("%H", TaskEvent.timestamp), func.count(TaskEvent.id))
+        .where(*event_filters)
+        .group_by(func.strftime("%H", TaskEvent.timestamp))
+    ).all()
+    hour_counts = {int(row[0]): int(row[1]) for row in hour_rows if row[0] is not None}
+    hourly = [{"hour": hour, "count": hour_counts.get(hour, 0)} for hour in range(24)]
+
+    recency_rows = session.exec(
+        select(TaskType.id, TaskType.name, TaskType.icon, func.max(TaskEvent.timestamp))
+        .join(
+            TaskEvent,
+            (TaskEvent.task_type_id == TaskType.id) & and_(*event_filters),
+            isouter=True,
+        )
+        .where(TaskType.is_active == True)  # noqa: E712
+        .group_by(TaskType.id)
+        .order_by(TaskType.sort_order, TaskType.name)
+    ).all()
+    task_recency = []
+    for task_id, name, icon, last_ts in recency_rows:
+        days_since = (now - last_ts).days if last_ts else None
+        task_recency.append(
+            {
+                "id": task_id,
+                "name": name,
+                "icon": icon,
+                "last_ts": last_ts,
+                "days_since": days_since,
+            }
+        )
+
+    def _with_percent(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        max_count = max((item["count"] for item in items), default=0)
+        for item in items:
+            item["pct"] = int((item["count"] / max_count) * 100) if max_count else 0
+        return items
+
+    top_tasks = _with_percent(top_tasks)
+    top_users = _with_percent(top_users)
+    cat_counts = _with_percent(cat_counts)
+    hourly = _with_percent(hourly)
+
+    task_totals_rows = session.exec(
+        select(
+            TaskType.id,
+            TaskType.name,
+            TaskType.icon,
+            func.count(TaskEvent.id),
+            func.count(func.distinct(func.date(TaskEvent.timestamp))),
+        )
+        .join(TaskEvent, TaskEvent.task_type_id == TaskType.id)
+        .where(
+            TaskType.is_active == True,  # noqa: E712
+            *event_filters,
+        )
+        .group_by(TaskType.id)
+        .order_by(TaskType.sort_order, TaskType.name)
+    ).all()
+
+    task_time_map: dict[int, dict[str, Any]] = {}
+    for task_id, name, icon, total_count, distinct_days in task_totals_rows:
+        task_time_map[task_id] = {
+            "id": task_id,
+            "name": name,
+            "icon": icon,
+            "hours": {hour: 0 for hour in range(24)},
+            "distinct_days": int(distinct_days or 0),
+            "total": int(total_count or 0),
+        }
+
+    task_hour_rows = session.exec(
+        select(
+            TaskType.id,
+            func.strftime("%H", TaskEvent.timestamp),
+            func.count(TaskEvent.id),
+        )
+        .join(TaskEvent, TaskEvent.task_type_id == TaskType.id)
+        .where(
+            TaskType.is_active == True,  # noqa: E712
+            *event_filters,
+        )
+        .group_by(TaskType.id, func.strftime("%H", TaskEvent.timestamp))
+    ).all()
+
+    for task_id, hour_str, hour_count in task_hour_rows:
+        entry = task_time_map.get(task_id)
+        if not entry or hour_str is None:
+            continue
+        entry["hours"][int(hour_str)] += int(hour_count)
+
+    task_time = []
+    for entry in task_time_map.values():
+        if entry["distinct_days"] < 7 and entry["total"] < 7:
+            continue
+        max_count = max(entry["hours"].values()) if entry["hours"] else 0
+        entry["hourly"] = [
+            {
+                "hour": hour,
+                "count": entry["hours"][hour],
+                "pct": int((entry["hours"][hour] / max_count) * 100) if max_count else 0,
+            }
+            for hour in range(24)
+        ]
+        task_time.append(entry)
+
+    response = templates.TemplateResponse(
+        "insights.html",
+        {
+            "request": request,
+            "lang": lang,
+            "user": user,
+            "total_all": int(total_all),
+            "total_7d": int(total_7d),
+            "total_30d": int(total_30d),
+            "top_tasks": top_tasks,
+            "top_users": top_users,
+            "cat_counts": cat_counts,
+            "no_cat_count": no_cat_count,
+            "hourly": hourly,
+            "task_time": task_time,
+            "task_recency": task_recency,
+            "humanize": humanize_timestamp,
+            "start_date": start_date_value,
+            "end_date": end_date_value,
+            "preset": preset,
         },
     )
     if request.query_params.get("lang"):
@@ -805,7 +1030,12 @@ def log_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    actor = who or user
+    actor = user
+    if who and who.strip():
+        resolved = resolve_user_name(who)
+        if not resolved:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown user")
+        actor = resolved
     cat_id_value = parse_cat_id(cat_id)
     cat = validate_cat_for_task(session, task, cat_id_value)
     event = create_event(session, task, actor, note, source="web", cat_id=cat.id if cat else None)

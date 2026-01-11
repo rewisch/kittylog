@@ -119,4 +119,23 @@ document.addEventListener("DOMContentLoaded", () => {
     panel.classList.toggle("hidden");
   });
 
+  // Toggle tooltip visibility on touch/click
+  document.body.addEventListener("click", (event) => {
+    const bar = event.target.closest(".tooltip-bar");
+    if (!bar) {
+      document.querySelectorAll(".tooltip-bar.tooltip-open").forEach((open) => {
+        open.classList.remove("tooltip-open");
+      });
+      return;
+    }
+    if (bar.classList.contains("tooltip-open")) {
+      bar.classList.remove("tooltip-open");
+      return;
+    }
+    document.querySelectorAll(".tooltip-bar.tooltip-open").forEach((open) => {
+      open.classList.remove("tooltip-open");
+    });
+    bar.classList.add("tooltip-open");
+  });
+
 });

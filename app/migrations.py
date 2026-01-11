@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Set
 
+import sqlite3
 import yaml
 
+from .auth import load_users
 from .settings import _resolve_db_path
 
 
@@ -67,11 +69,66 @@ def _migrate_001_move_db_to_data_dir(repo_root: Path, settings_path: Path) -> No
         print(f"Updated settings to use {NEW_DB_RELATIVE}")
 
 
+def _migrate_002_normalize_task_event_users(repo_root: Path, settings_path: Path) -> None:
+    """Normalize TaskEvent.who casing to match users file entries."""
+    if settings_path.exists():
+        settings_data = yaml.safe_load(settings_path.read_text(encoding="utf-8")) or {}
+    else:
+        settings_data = {}
+
+    raw_db_value = settings_data.get("db_path") or NEW_DB_RELATIVE
+    db_path = _resolve_db_path(raw_db_value, repo_root)
+    if not db_path.exists():
+        print(f"Database not found at {db_path}; skipping user normalization.")
+        return
+
+    users = load_users()
+    canonical_map: dict[str, str | None] = {}
+    for username in users.keys():
+        key = username.casefold()
+        if key in canonical_map and canonical_map[key] != username:
+            canonical_map[key] = None
+        else:
+            canonical_map[key] = username
+    canonical_map = {k: v for k, v in canonical_map.items() if v}
+
+    if not canonical_map:
+        print("No users available for normalization; skipping.")
+        return
+
+    updated = 0
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT who FROM taskevent WHERE who IS NOT NULL AND TRIM(who) != ''"
+        )
+        rows = cursor.fetchall()
+        for (raw_who,) in rows:
+            if raw_who is None:
+                continue
+            who_value = str(raw_who)
+            canonical = canonical_map.get(who_value.casefold())
+            if canonical and canonical != who_value:
+                cursor.execute(
+                    "UPDATE taskevent SET who = ? WHERE who = ?",
+                    (canonical, who_value),
+                )
+                updated += cursor.rowcount
+        conn.commit()
+
+    print(f"Normalized task event users: {updated} row(s) updated.")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(
         id="001_move_db_to_data_dir",
         fn=_migrate_001_move_db_to_data_dir,
         description="Move legacy root-level kittylog.db into data/kittylog.db and update settings.",
+    ),
+    Migration(
+        id="002_normalize_task_event_users",
+        fn=_migrate_002_normalize_task_event_users,
+        description="Normalize task event usernames to match users file casing.",
     ),
 ]
 

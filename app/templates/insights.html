@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-6">
+    <p class="text-xs uppercase tracking-[0.3em] text-slate-400 mb-1">{{ t("insights_label", lang) }}</p>
+    <h1 class="text-2xl font-semibold">{{ t("insights_title", lang) }}</h1>
+    <p class="text-slate-400 text-sm">{{ t("insights_subtitle", lang) }}</p>
+</div>
+
+<div class="space-y-3 mb-6">
+    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div class="flex items-center gap-2">
+            <a href="/insights?lang={{ lang }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/10 text-sm">{{ t("filters_reset", lang) }}</a>
+        </div>
+        <div class="flex flex-col gap-2 w-full md:w-auto md:flex-row md:items-center">
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 text-[11px] w-full md:w-auto">
+                <span class="text-slate-400 whitespace-nowrap">{{ t("quick_ranges", lang) }}:</span>
+                {% for code, label in [("today", t("range_today", lang)), ("7d", t("range_7d", lang)), ("30d", t("range_30d", lang))] %}
+                <a href="/insights?lang={{ lang }}&preset={{ code }}" class="px-3 py-1 rounded-full border border-white/10 hover:border-white/20 whitespace-nowrap {{ 'bg-white/10 text-slate-100' if preset==code else 'text-slate-400' }}">{{ label }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <form method="get" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-sm rounded-2xl bg-slate-900/70 border border-white/5 p-3">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input type="date" name="start_date" value="{{ start_date }}" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40" placeholder="{{ t('start_date', lang) }}">
+        <input type="date" name="end_date" value="{{ end_date }}" class="bg-slate-900 border border-white/5 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/40" placeholder="{{ t('end_date', lang) }}">
+        <div class="flex gap-2 sm:col-span-2 md:col-span-3">
+            <button type="submit" class="flex-1 bg-emerald-500/90 hover:bg-emerald-500 text-slate-950 font-semibold px-3 py-2 rounded-xl transition shadow-lg shadow-emerald-500/20">{{ t("filters_apply", lang) }}</button>
+            <a href="/insights?lang={{ lang }}" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition border border-white/5">{{ t("filters_reset", lang) }}</a>
+        </div>
+    </form>
+    {% set active = [] %}
+    {% if start_date %}{% set _ = active.append({"key":"start_date","label":t("filter_start", lang) ~ ": " ~ start_date}) %}{% endif %}
+    {% if end_date %}{% set _ = active.append({"key":"end_date","label":t("filter_end", lang) ~ ": " ~ end_date}) %}{% endif %}
+    {% if preset %}
+        {% set preset_label = t("range_today", lang) if preset=="today" else (t("range_7d", lang) if preset=="7d" else t("range_30d", lang)) %}
+        {% set _ = active.append({"key":"preset","label":t("filter_preset", lang) ~ ": " ~ preset_label}) %}
+    {% endif %}
+    {% if active %}
+    <div class="flex flex-wrap gap-2 items-center text-xs">
+        <span class="text-slate-400">{{ t("applied_filters", lang) }}</span>
+        {% for item in active %}
+        <form method="get" class="inline-flex">
+            <input type="hidden" name="lang" value="{{ lang }}">
+            {% if item.key != "start_date" and start_date %}<input type="hidden" name="start_date" value="{{ start_date }}">{% endif %}
+            {% if item.key != "end_date" and end_date %}<input type="hidden" name="end_date" value="{{ end_date }}">{% endif %}
+            {% if item.key != "preset" and preset %}<input type="hidden" name="preset" value="{{ preset }}">{% endif %}
+            <button type="submit" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center gap-1">
+                <span>{{ item.label }}</span>
+                <span aria-hidden="true">✕</span>
+            </button>
+        </form>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <p class="text-xs text-slate-400">{{ t("insights_total", lang) }}</p>
+        <p class="text-2xl font-semibold mt-2">{{ total_all }}</p>
+    </div>
+    {% if start_date or end_date or preset %}
+    <div class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <p class="text-xs text-slate-400">{{ t("filter_start", lang) }}</p>
+        <p class="text-2xl font-semibold mt-2">{{ start_date or "—" }}</p>
+    </div>
+    <div class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <p class="text-xs text-slate-400">{{ t("filter_end", lang) }}</p>
+        <p class="text-2xl font-semibold mt-2">{{ end_date or "—" }}</p>
+    </div>
+    {% else %}
+    <div class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <p class="text-xs text-slate-400">{{ t("insights_last_7d", lang) }}</p>
+        <p class="text-2xl font-semibold mt-2">{{ total_7d }}</p>
+    </div>
+    <div class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <p class="text-xs text-slate-400">{{ t("insights_last_30d", lang) }}</p>
+        <p class="text-2xl font-semibold mt-2">{{ total_30d }}</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <section class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold">{{ t("insights_top_tasks", lang) }}</h2>
+        </div>
+        <div class="space-y-3">
+            {% for item in top_tasks %}
+            <div class="flex items-center gap-3">
+                <div class="h-10 w-10 rounded-2xl bg-slate-800 flex items-center justify-center text-xl">{{ item.icon }}</div>
+                <div class="flex-1">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="font-semibold">{{ item.name }}</span>
+                        <span class="text-slate-400">{{ item.count }}</span>
+                    </div>
+                    <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="h-full bg-emerald-400/70 rounded-full" style="width: {{ item.pct }}%"></div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-400">{{ t("insights_empty", lang) }}</p>
+            {% endfor %}
+        </div>
+    </section>
+    <section class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold">{{ t("insights_top_users", lang) }}</h2>
+        </div>
+        <div class="space-y-3">
+            {% for item in top_users %}
+            <div class="flex items-center gap-3">
+                <div class="h-10 w-10 rounded-2xl bg-slate-800 flex items-center justify-center text-sm font-semibold">
+                    {{ (item.name or t("insights_unknown_user", lang))[:2] }}
+                </div>
+                <div class="flex-1">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="font-semibold">{{ item.name or t("insights_unknown_user", lang) }}</span>
+                        <span class="text-slate-400">{{ item.count }}</span>
+                    </div>
+                    <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="h-full bg-sky-400/70 rounded-full" style="width: {{ item.pct }}%"></div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-400">{{ t("insights_empty", lang) }}</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <section class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold">{{ t("insights_cat_activity", lang) }}</h2>
+        </div>
+        <div class="space-y-3">
+            {% for item in cat_counts %}
+            <div class="flex items-center gap-3">
+                <div class="h-10 w-10 rounded-2xl bg-slate-800 flex items-center justify-center text-sm font-semibold">
+                    {{ item.name[:2] }}
+                </div>
+                <div class="flex-1">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="font-semibold">{{ item.name }}</span>
+                        <span class="text-slate-400">{{ item.count }}</span>
+                    </div>
+                    <div class="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="h-full bg-rose-400/70 rounded-full" style="width: {{ item.pct }}%"></div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% if no_cat_count %}
+            <div class="flex items-center gap-3">
+                <div class="h-10 w-10 rounded-2xl bg-slate-800 flex items-center justify-center text-xs font-semibold">—</div>
+                <div class="flex-1">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="font-semibold">{{ t("insights_no_cat", lang) }}</span>
+                        <span class="text-slate-400">{{ no_cat_count }}</span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% if not cat_counts and not no_cat_count %}
+            <p class="text-sm text-slate-400">{{ t("insights_empty", lang) }}</p>
+            {% endif %}
+        </div>
+    </section>
+    <section class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold">{{ t("insights_recency", lang) }}</h2>
+        </div>
+        <div class="space-y-2">
+            {% for item in task_recency %}
+            <div class="flex items-center justify-between text-sm border-b border-white/5 pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">{{ item.icon }}</span>
+                    <span class="font-semibold">{{ item.name }}</span>
+                </div>
+                <span class="text-slate-400">
+                    {% if item.last_ts %}
+                        {{ humanize(item.last_ts, lang) }}
+                    {% else %}
+                        {{ t("insights_never", lang) }}
+                    {% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+
+<section class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold">{{ t("insights_time_of_day", lang) }}</h2>
+    </div>
+    <div class="grid grid-cols-6 md:grid-cols-12 gap-2">
+        {% for item in hourly %}
+        <div class="flex flex-col items-center gap-1 text-[10px] text-slate-500 tooltip-wrap">
+            <button type="button" class="tooltip-bar w-full h-12 bg-slate-800 rounded-md flex items-end" data-tooltip="{{ "%02d"|format(item.hour) }}:00 · {{ item.count }} {{ t("insights_entries", lang) }}">
+                <span class="w-full bg-cyan-400/70 rounded-md" style="height: {{ item.pct }}%"></span>
+            </button>
+            <span>{{ "%02d"|format(item.hour) }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="mt-3 text-xs text-slate-500">{{ t("insights_utc_hint", lang) }}</p>
+</section>
+
+<section class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30">
+    <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold">{{ t("insights_task_time", lang) }}</h2>
+        <span class="text-xs text-slate-500">{{ t("insights_task_time_hint", lang) }}</span>
+    </div>
+    <div class="space-y-4">
+        {% for task in task_time %}
+        <div>
+            <div class="flex items-center gap-2 text-sm mb-2">
+                <span class="text-lg">{{ task.icon }}</span>
+                <span class="font-semibold">{{ task.name }}</span>
+                <span class="text-xs text-slate-500">({{ task.total }})</span>
+            </div>
+            <div class="grid grid-cols-12 gap-2">
+                {% for item in task.hourly %}
+                <div class="flex flex-col items-center gap-1 text-[10px] text-slate-500 tooltip-wrap">
+                    <button type="button" class="tooltip-bar w-full h-10 bg-slate-800 rounded-md flex items-end" data-tooltip="{{ "%02d"|format(item.hour) }}:00 · {{ item.count }} {{ t("insights_entries", lang) }}">
+                        <span class="w-full bg-emerald-400/70 rounded-md" style="height: {{ item.pct }}%"></span>
+                    </button>
+                    <span>{{ "%02d"|format(item.hour) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p class="text-sm text-slate-400">{{ t("insights_empty", lang) }}</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

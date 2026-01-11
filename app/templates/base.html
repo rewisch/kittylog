@@ -31,6 +31,7 @@
                         <a href="/?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_dashboard", lang) }}</a>
                         <a href="/history?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_history", lang) }}</a>
                         <a href="/cats?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_cats", lang) }}</a>
+                        <a href="/insights?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_insights", lang) }}</a>
                         <a href="/settings?lang={{ lang }}" class="px-3 py-2 rounded-xl hover:bg-white/5 transition">{{ t("nav_settings", lang) }}</a>
                     </div>
                     <div class="md:hidden flex items-center gap-2">
@@ -57,6 +58,7 @@
                     {% endif %}
                 </nav>
                 <div id="nav-overflow" class="hidden md:hidden absolute right-4 top-[4.5rem] w-48 rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur p-2 shadow-lg shadow-black/50">
+                    <a href="/insights?lang={{ lang }}" class="block px-3 py-2 rounded-xl hover:bg-white/5 text-sm">{{ t("nav_insights", lang) }}</a>
                     <a href="/settings?lang={{ lang }}" class="block px-3 py-2 rounded-xl hover:bg-white/5 text-sm">{{ t("nav_settings", lang) }}</a>
                     <div class="mt-2 border-t border-white/10 pt-2 text-xs text-slate-400 flex gap-1">
                         {% for code in supported_langs %}

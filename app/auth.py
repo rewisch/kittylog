@@ -198,3 +198,23 @@ def validate_csrf_token(session_token: str | None, form_token: str | None) -> bo
         return hmac.compare_digest(session_token, form_token)
     except Exception:
         return False
+
+
+def resolve_user_name(name: str | None) -> str | None:
+    """Return canonical username if it matches a known active user (case-insensitive)."""
+    if name is None:
+        return None
+    cleaned = name.strip()
+    if not cleaned:
+        return None
+    users = load_users()
+    mapping: dict[str, str | None] = {}
+    for username, record in users.items():
+        if not record.get("active", True):
+            continue
+        key = username.casefold()
+        if key in mapping and mapping[key] != username:
+            mapping[key] = None
+        else:
+            mapping[key] = username
+    return mapping.get(cleaned.casefold())

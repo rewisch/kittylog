@@ -61,3 +61,15 @@ rules:
     min_days_since_last: 28
     repeat_every_days: 2
     group: "maintenance"
+
+events:
+  - id: "cat-birthday"
+    type: "cat_birthday"
+    title: "KittyLog"
+    message: "Birthday today: {cats}."
+
+  - id: "cat-milestone"
+    type: "cat_milestone"
+    months: [6, 7, 8, 9, 10, 11, 22, 33, 44, 55, 100, 200, 300]
+    title: "KittyLog"
+    message: "Milestones today: {items}."
