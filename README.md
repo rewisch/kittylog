@@ -1,18 +1,21 @@
 # KittyLog
 
-Tiny FastAPI app to log cat-care tasks via dashboard or QR codes. Config lives in `config/tasks.yml`, data in SQLite (`data/kittylog.db`).
+Tiny FastAPI app to log cat-care tasks via web-interface or QR codes. Config lives in `config/tasks.yml`, data in SQLite (`data/kittylog.db`).
 
 ## Run
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+sudo pacman -S gcc
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-Visit `http://localhost:8000` (history at `/history`). DB and task types are created/updated on startup.
+Visit `http://localhost:8000` 
+
+DB and task types are created/updated on startup.
 
 If running over cloudflare:
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --workers 1
 
 ## Server logging
 - Uvicorn/app logging is configured in `config/logging.yml`.
@@ -20,7 +23,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
 - Start the server with logging enabled (add `--reload` for dev):
   ```bash
   uvicorn app.main:app \
-    --host 0.0.0.0 \
+    --host 127.0.0.1 \
     --port 8000 \
     --access-log \
     --proxy-headers \
@@ -31,7 +34,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --workers 1
 
 ## Generate QR codes for tasks
 ```bash
-pip install -r requirements.txt        # if not already installed
+pip install -r requirements.txt
 python scripts/generate_qr_codes.py --base-url http://localhost:8000
 ```
 PNG files are written to `scripts/qr_codes`. Scan from a logged-in phone to auto-log the task.
@@ -65,7 +68,6 @@ options:
 
 ## Migrations
 - Startup runs numbered migrations defined in `app/migrations.py` and records them in `config/migrations.yml`.
-- Existing installs with a root-level `kittylog.db` are migrated automatically to `data/kittylog.db` (settings are rewritten to point to the new location).
 
 ## Tasks config (`config/tasks.yml`)
 ```yaml
@@ -85,19 +87,16 @@ Colors: If you omit `color` (or repeat colors), the app assigns unique colors pe
 KittyLog supports Web Push for users who add the app to their home screen (iOS 16.4+ / modern Android). Setup:
 
 ```bash
+sudo pacman -S gcc
 pip install -r requirements.txt
 ./scripts/setup_push_notifications.sh
 ```
 
 This generates VAPID keys in `config/push_keys.yml`, creates a sample `config/notifications.yml`, and ensures DB tables exist. Edit `config/notifications.yml` to define reminder rules.
 
-Run the dispatcher on a schedule (cron/systemd timer). Example cron (every minute):
+Run the dispatcher on a schedule (systemd timer).
 
-```bash
-* * * * * /path/to/kittylog/.venv/bin/python /path/to/kittylog/scripts/dispatch_notifications.py
-```
-
-After the server is running over HTTPS, add KittyLog to the phone home screen, open the dashboard, and click “Enable notifications”.
+After the server is running over HTTPS, add KittyLog to the phone home screen, open the Settings, and click “Enable notifications”.
 
 ## Cats
 - Manage cats at `/cats` (name, color, birthday, chip ID, optional photo, active flag).
