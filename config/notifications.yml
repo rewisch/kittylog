@@ -3,13 +3,61 @@ window_minutes: 5
 click_url: "/"
 
 groups:
-  morning-missing:
+  morning:
     title: "KittyLog reminder"
-    message: "Still missing today: {tasks}."
+    message: "Morning check: {tasks} still missing."
+  evening:
+    title: "KittyLog reminder"
+    message: "Evening check: {tasks} still missing."
+  maintenance:
+    title: "KittyLog reminder"
+    message: "Maintenance due: {tasks}."
 
 rules:
-  - id: "missing-feed-0900"
+  - id: "feed-morning-0900"
     time: "09:00"
     task_slug: "feed"
     if_not_logged_today: true
-    group: "morning-missing"
+    group: "morning"
+
+  - id: "feed-evening-1930"
+    time: "19:30"
+    task_slug: "feed"
+    if_not_logged_today: true
+    group: "evening"
+
+  - id: "clean-litter-1930"
+    time: "19:30"
+    task_slug: "clean_litter"
+    if_not_logged_today: true
+    group: "evening"
+
+  - id: "playtime-1930"
+    time: "19:30"
+    task_slug: "playtime"
+    if_not_logged_today: true
+    group: "evening"
+
+  - id: "change-sand-overdue"
+    time: "19:30"
+    task_slug: "change_sand"
+    if_not_logged_today: false
+    min_days_since_last: 21
+    repeat_every_days: 2
+    group: "maintenance"
+
+  - id: "water-pump-overdue"
+    time: "19:30"
+    task_slug: "water_pump"
+    if_not_logged_today: false
+    min_days_since_last: 28
+    repeat_every_days: 2
+    group: "maintenance"
+
+  - id: "water-filter-overdue"
+    time: "19:30"
+    task_slug: "water_filter"
+    if_not_logged_today: false
+    min_days_since_last: 28
+    repeat_every_days: 2
+    group: "maintenance"

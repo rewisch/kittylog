@@ -36,6 +36,8 @@ class RuleConfig:
     time: dt_time
     task_slug: str
     if_not_logged_today: bool
+    min_days_since_last: int | None
+    repeat_every_days: int | None
     title: str | None
     message: str | None
     group: str | None
@@ -96,6 +98,24 @@ def load_notification_config(path: Path) -> NotificationConfig:
             raise ValueError(f"Rule '{rule_id}' is missing task_slug")
         time_value = _parse_time(str(item.get("time") or ""))
         if_not_logged_today = bool(item.get("if_not_logged_today", True))
+        min_days_since_last = item.get("min_days_since_last")
+        if min_days_since_last is not None:
+            try:
+                min_days_since_last = int(min_days_since_last)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Rule '{rule_id}' min_days_since_last must be an integer") from exc
+            if min_days_since_last < 0:
+                raise ValueError(f"Rule '{rule_id}' min_days_since_last must be >= 0")
+        repeat_every_days = item.get("repeat_every_days")
+        if repeat_every_days is not None:
+            try:
+                repeat_every_days = int(repeat_every_days)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Rule '{rule_id}' repeat_every_days must be an integer") from exc
+            if repeat_every_days <= 0:
+                raise ValueError(f"Rule '{rule_id}' repeat_every_days must be > 0")
+        if min_days_since_last is None and not if_not_logged_today:
+            raise ValueError(f"Rule '{rule_id}' must set if_not_logged_today or min_days_since_last")
         title = str(item.get("title") or "").strip() or None
         message = str(item.get("message") or "").strip() or None
         group = str(item.get("group") or "").strip() or None
@@ -105,6 +125,8 @@ def load_notification_config(path: Path) -> NotificationConfig:
                 time=time_value,
                 task_slug=task_slug,
                 if_not_logged_today=if_not_logged_today,
+                min_days_since_last=min_days_since_last,
+                repeat_every_days=repeat_every_days,
                 title=title,
                 message=message,
                 group=group,
@@ -139,6 +161,13 @@ def local_day_bounds(now_local: datetime) -> tuple[datetime, datetime]:
     start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
     end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
     return start_utc, end_utc
+
+
+def days_since_last_event(last_ts: datetime | None, now_local: datetime) -> int | None:
+    if last_ts is None:
+        return None
+    last_local = last_ts.replace(tzinfo=timezone.utc).astimezone(now_local.tzinfo)
+    return (now_local.date() - last_local.date()).days
 
 
 def _ensure_pywebpush_curve() -> None:
@@ -291,6 +320,21 @@ def main(argv: list[str] | None = None) -> int:
                 ).first()
                 if exists:
                     continue
+            if rule.min_days_since_last is not None:
+                last_event = session.exec(
+                    select(TaskEvent).where(
+                        TaskEvent.task_type_id == task.id,
+                        TaskEvent.deleted == False,  # noqa: E712
+                    ).order_by(TaskEvent.timestamp.desc()).limit(1)
+                ).first()
+                days_since = days_since_last_event(last_event.timestamp if last_event else None, now_local)
+                if days_since is None:
+                    days_since = rule.min_days_since_last
+                if days_since < rule.min_days_since_last:
+                    continue
+                if rule.repeat_every_days is not None:
+                    if (days_since - rule.min_days_since_last) % rule.repeat_every_days != 0:
+                        continue
             triggered.append((rule, task))
 
         if not triggered:
