@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if ! id kittylog >/dev/null 2>&1; then
-  useradd --system --create-home --home-dir /home/kittylog --shell /usr/sbin/nologin kittylog
+useradd --system --create-home --home-dir /home/kittylog --shell /usr/sbin/nologin kittylog
 fi
 
 if [[ ! -d "$REPO_ROOT" ]]; then
@@ -86,11 +86,16 @@ TIMER
 chown -R kittylog:kittylog /home/kittylog/.config
 loginctl enable-linger kittylog
 
-runuser -l kittylog -c "systemctl --user daemon-reload"
-runuser -l kittylog -c "systemctl --user enable --now kittylog-notify.timer"
+uid="$(id -u kittylog)"
+runtime_dir="/run/user/${uid}"
+mkdir -p "$runtime_dir"
+chown kittylog:kittylog "$runtime_dir"
+
+sudo -u kittylog XDG_RUNTIME_DIR="$runtime_dir" systemctl --user daemon-reload
+sudo -u kittylog XDG_RUNTIME_DIR="$runtime_dir" systemctl --user enable --now kittylog-notify.timer
 
 cat <<'DONE'
 Installed systemd user timer for kittylog.
 Check status with:
-  runuser -l kittylog -c "systemctl --user status kittylog-notify.timer"
+  sudo -u kittylog XDG_RUNTIME_DIR="/run/user/$(id -u kittylog)" systemctl --user status kittylog-notify.timer
 DONE
