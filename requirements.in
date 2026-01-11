@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlmodel
+pyyaml
+jinja2
+python-multipart
+itsdangerous
+qrcode[pil]
+Pillow
+pywebpush
+py-vapid

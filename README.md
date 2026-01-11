@@ -23,6 +23,44 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+## Dependency updates & security
+
+KittyLog uses locked dependencies:
+
+* `requirements.in` → app deps
+* `requirements.txt` → pinned runtime lockfile
+* `requirements-dev.txt` → dev/test tools
+
+Make sure you have the necessary tooling available by running: pip install -r requirements-dev.txt
+
+### Update dependencies
+
+```bash
+source .venv/bin/activate
+pip-compile --upgrade
+#Check the diffs
+git diff requirements.txt
+pip-sync
+#run test suite
+pytest
+```
+
+Commit the updated `requirements.txt` when tests pass.
+
+### Security audit
+
+```bash
+pip-audit
+```
+
+If issues are found:
+
+```bash
+pip-compile --upgrade
+pip-sync
+pip-audit
+```
+
 ## Server logging
 - Uvicorn/app logging is configured in `config/logging.yml`.
 - Logs live in the `logs/` directory by default (`logs/kittylog.log`, `logs/kittylog.access.log`, `logs/kittylog.requests.log`). Change the filenames in `config/logging.yml` if you prefer `/var/log/kittylog/` (make sure the process can write there).
