@@ -39,6 +39,8 @@ class RuleConfig:
     if_not_logged_today: bool
     min_days_since_last: int | None
     repeat_every_days: int | None
+    check_window_start: dt_time | None
+    check_window_end: dt_time | None
     title: str | None
     message: str | None
     group: str | None
@@ -127,6 +129,22 @@ def load_notification_config(path: Path) -> NotificationConfig:
                 raise ValueError(f"Rule '{rule_id}' repeat_every_days must be > 0")
         if min_days_since_last is None and not if_not_logged_today:
             raise ValueError(f"Rule '{rule_id}' must set if_not_logged_today or min_days_since_last")
+        check_window_start = item.get("check_window_start")
+        check_window_end = item.get("check_window_end")
+        if check_window_start is not None or check_window_end is not None:
+            if not if_not_logged_today:
+                raise ValueError(
+                    f"Rule '{rule_id}' check_window_* requires if_not_logged_today to be true"
+                )
+            if check_window_start is None or check_window_end is None:
+                raise ValueError(
+                    f"Rule '{rule_id}' must set both check_window_start and check_window_end"
+                )
+            check_window_start = _parse_time(str(check_window_start))
+            check_window_end = _parse_time(str(check_window_end))
+        else:
+            check_window_start = None
+            check_window_end = None
         title = str(item.get("title") or "").strip() or None
         message = str(item.get("message") or "").strip() or None
         group = str(item.get("group") or "").strip() or None
@@ -138,6 +156,8 @@ def load_notification_config(path: Path) -> NotificationConfig:
                 if_not_logged_today=if_not_logged_today,
                 min_days_since_last=min_days_since_last,
                 repeat_every_days=repeat_every_days,
+                check_window_start=check_window_start,
+                check_window_end=check_window_end,
                 title=title,
                 message=message,
                 group=group,
@@ -206,6 +226,30 @@ def is_within_window(now_local: datetime, rule_time: dt_time, window_minutes: in
 def local_day_bounds(now_local: datetime) -> tuple[datetime, datetime]:
     start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     end_local = start_local + timedelta(days=1)
+    start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+    return start_utc, end_utc
+
+
+def local_time_window_bounds(
+    now_local: datetime,
+    window_start: dt_time,
+    window_end: dt_time,
+) -> tuple[datetime, datetime]:
+    start_local = now_local.replace(
+        hour=window_start.hour,
+        minute=window_start.minute,
+        second=0,
+        microsecond=0,
+    )
+    end_local = now_local.replace(
+        hour=window_end.hour,
+        minute=window_end.minute,
+        second=0,
+        microsecond=0,
+    )
+    if end_local <= start_local:
+        end_local += timedelta(days=1)
     start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
     end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
     return start_utc, end_utc
@@ -373,12 +417,20 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Warning: task '{rule.task_slug}' not found for rule '{rule.rule_id}'")
                 continue
             if rule.if_not_logged_today:
+                if rule.check_window_start and rule.check_window_end:
+                    window_start_utc, window_end_utc = local_time_window_bounds(
+                        now_local,
+                        rule.check_window_start,
+                        rule.check_window_end,
+                    )
+                else:
+                    window_start_utc, window_end_utc = start_utc, end_utc
                 exists = session.exec(
                     select(TaskEvent.id).where(
                         TaskEvent.task_type_id == task.id,
                         TaskEvent.deleted == False,  # noqa: E712
-                        TaskEvent.timestamp >= start_utc,
-                        TaskEvent.timestamp < end_utc,
+                        TaskEvent.timestamp >= window_start_utc,
+                        TaskEvent.timestamp < window_end_utc,
                     ).limit(1)
                 ).first()
                 if exists:

@@ -18,12 +18,16 @@ rules:
     time: "09:00"
     task_slug: "feed"
     if_not_logged_today: true
+    check_window_start: "00:00"
+    check_window_end: "12:00"
     group: "morning"
 
   - id: "feed-evening-1930"
     time: "19:30"
     task_slug: "feed"
     if_not_logged_today: true
+    check_window_start: "12:00"
+    check_window_end: "00:00"
     group: "evening"
 
   - id: "clean-litter-1930"
