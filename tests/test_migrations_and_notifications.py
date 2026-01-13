@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -10,9 +10,16 @@ from sqlmodel import Session, select
 from app.migrations import _migrate_002_normalize_task_event_users
 from app.auth import encode_password, save_users
 from app.database import configure_engine, create_db_and_tables, get_engine
-from app.models import TaskEvent, TaskType
+from app.models import NotificationLog, PushSubscription, TaskEvent, TaskType
+from app.push_config import PushSettings
+from app.settings import AppSettings
+import scripts.dispatch_notifications as dispatch
+from scripts.dispatch_notifications import birthday_matches
+from scripts.dispatch_notifications import days_since_last_event
+from scripts.dispatch_notifications import is_within_window
 from scripts.dispatch_notifications import load_notification_config
 from scripts.dispatch_notifications import local_time_window_bounds
+from scripts.dispatch_notifications import months_since_birth
 
 
 def _write_users(path: Path, users: dict[str, str]) -> None:
@@ -179,3 +186,127 @@ events: []
         evening_ids = _event_ids_in_window(session, task.id, window_start, window_end)
         assert evening_event.id in evening_ids
         assert morning_event.id not in evening_ids
+
+
+def test_is_within_window_handles_midnight_wrap() -> None:
+    tz = ZoneInfo("UTC")
+    rule_time = dt_time(23, 58)
+    assert is_within_window(datetime(2024, 1, 1, 23, 59, tzinfo=tz), rule_time, 5) is True
+    assert is_within_window(datetime(2024, 1, 2, 0, 2, tzinfo=tz), rule_time, 5) is True
+    assert is_within_window(datetime(2024, 1, 2, 0, 3, tzinfo=tz), rule_time, 5) is False
+    assert is_within_window(datetime(2024, 1, 2, 9, 4, tzinfo=tz), dt_time(9, 0), 5) is True
+    assert is_within_window(datetime(2024, 1, 2, 9, 5, tzinfo=tz), dt_time(9, 0), 5) is False
+
+
+def test_days_since_last_event_uses_local_date() -> None:
+    tz = ZoneInfo("America/New_York")
+    now_local = datetime(2024, 1, 10, 1, 0, tzinfo=tz)
+    last_ts = datetime(2024, 1, 9, 23, 30)
+    assert days_since_last_event(last_ts, now_local) == 1
+    assert days_since_last_event(None, now_local) is None
+
+
+def test_event_helpers_cover_leap_day_and_months() -> None:
+    leap_birthday = date(2020, 2, 29)
+    assert birthday_matches(leap_birthday, date(2021, 2, 28)) is True
+    assert birthday_matches(leap_birthday, date(2021, 3, 1)) is False
+    assert birthday_matches(leap_birthday, date(2024, 2, 29)) is True
+
+    birthday = date(2024, 1, 15)
+    assert months_since_birth(birthday, date(2024, 2, 15)) == 1
+    assert months_since_birth(birthday, date(2024, 2, 14)) is None
+    assert months_since_birth(birthday, date(2023, 12, 15)) is None
+
+
+def test_notification_grouping_and_dedup(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "notifications.db"
+    configure_engine(db_path)
+    create_db_and_tables()
+
+    config_path = tmp_path / "notifications.yml"
+    config_path.write_text(
+        """
+timezone: "UTC"
+window_minutes: 5
+click_url: "/"
+groups:
+  daily:
+    title: "KittyLog"
+    message: "Tasks missing: {tasks}."
+rules:
+  - id: "feed-morning"
+    time: "09:00"
+    task_slug: "feed"
+    if_not_logged_today: true
+    group: "daily"
+  - id: "clean-morning"
+    time: "09:00"
+    task_slug: "clean"
+    if_not_logged_today: true
+    group: "daily"
+  - id: "water-maintenance"
+    time: "09:00"
+    task_slug: "water"
+    if_not_logged_today: false
+    min_days_since_last: 2
+    repeat_every_days: 2
+events: []
+""",
+        encoding="utf-8",
+    )
+
+    now_local = datetime.now(ZoneInfo("UTC"))
+    water_event_time = (now_local - timedelta(days=3)).astimezone(timezone.utc).replace(tzinfo=None)
+
+    with Session(get_engine()) as session:
+        feed_task = TaskType(slug="feed", name="Feed", icon="F", color="blue", sort_order=0)
+        clean_task = TaskType(slug="clean", name="Clean", icon="C", color="blue", sort_order=0)
+        water_task = TaskType(slug="water", name="Water", icon="W", color="blue", sort_order=0)
+        session.add_all([feed_task, clean_task, water_task])
+        session.add(
+            PushSubscription(
+                user="tester",
+                endpoint="https://example.com/endpoint",
+                p256dh="p256dh",
+                auth="auth",
+            )
+        )
+        session.commit()
+        session.refresh(water_task)
+        session.add(TaskEvent(task_type_id=water_task.id, timestamp=water_event_time))
+        session.commit()
+
+    monkeypatch.setattr(
+        dispatch,
+        "load_settings",
+        lambda path=None: AppSettings(db_path=db_path),
+    )
+    monkeypatch.setattr(
+        dispatch,
+        "load_push_settings",
+        lambda path=None: PushSettings(
+            vapid_private_key="dummy",
+            vapid_subject="mailto:test@example.com",
+        ),
+    )
+    send_calls: list[tuple[tuple, dict]] = []
+
+    def _fake_send(*args, **kwargs) -> None:
+        send_calls.append((args, kwargs))
+
+    monkeypatch.setattr(dispatch, "send_web_push", _fake_send)
+
+    assert dispatch.main(["--config", str(config_path), "--at", "09:00"]) == 0
+    assert len(send_calls) == 1
+
+    with Session(get_engine()) as session:
+        logs = session.exec(select(NotificationLog)).all()
+        assert len(logs) == 1
+        assert logs[0].group_id == "daily"
+
+    assert dispatch.main(["--config", str(config_path), "--at", "09:00"]) == 0
+    assert len(send_calls) == 1
+
+    with Session(get_engine()) as session:
+        logs = session.exec(select(NotificationLog)).all()
+        assert len(logs) == 1
