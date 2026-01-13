@@ -2,6 +2,10 @@ timezone: "Europe/Berlin"
 window_minutes: 5
 click_url: "/"
 
+log_events:
+  title: "KittyLog"
+  message: "{task} logged by {who}."
+
 groups:
   morning:
     title: "KittyLog reminder"

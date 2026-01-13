@@ -31,6 +31,20 @@ function setPushDescription(card, message) {
   descEl.textContent = message || "";
 }
 
+function setLogStatus(card, message, tone) {
+  const statusEl = card.querySelector("[data-log-status]");
+  if (!statusEl) return;
+  statusEl.textContent = message || "";
+  statusEl.className = "text-xs";
+  if (tone === "good") {
+    statusEl.classList.add("text-emerald-300");
+  } else if (tone === "bad") {
+    statusEl.classList.add("text-rose-300");
+  } else {
+    statusEl.classList.add("text-slate-400");
+  }
+}
+
 async function sendSubscription(card, subscription) {
   const csrfToken = card.dataset.csrfToken || "";
   const response = await fetch("/api/push/subscribe", {
@@ -59,6 +73,24 @@ async function disableSubscription(card, subscription) {
     body: JSON.stringify({ endpoint: subscription.endpoint }),
   });
   await subscription.unsubscribe();
+}
+
+async function updateLogPreference(card, enabled) {
+  const csrfToken = card.dataset.csrfToken || "";
+  const response = await fetch("/api/push/log-preference", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken,
+    },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const message = payload && payload.detail ? payload.detail : card.dataset.errorLabel;
+    throw new Error(message || "Unable to update log notifications.");
+  }
+  return response.json().catch(() => null);
 }
 
 async function initPushCard() {
@@ -150,6 +182,40 @@ async function initPushCard() {
   });
 }
 
+async function initLogNotifyCard() {
+  const card = document.getElementById("log-notify-card");
+  if (!card) return;
+  const toggle = card.querySelector("[data-log-toggle]");
+  if (!toggle) return;
+
+  const enabled = card.dataset.enabled === "true";
+  toggle.checked = enabled;
+  setLogStatus(
+    card,
+    enabled ? card.dataset.enabledLabel || "Log notifications enabled." : card.dataset.disabledLabel || "Log notifications disabled.",
+    enabled ? "good" : "neutral"
+  );
+
+  toggle.addEventListener("change", async () => {
+    toggle.disabled = true;
+    const targetValue = toggle.checked;
+    try {
+      await updateLogPreference(card, targetValue);
+      setLogStatus(
+        card,
+        targetValue ? card.dataset.enabledLabel || "Log notifications enabled." : card.dataset.disabledLabel || "Log notifications disabled.",
+        targetValue ? "good" : "neutral"
+      );
+    } catch (err) {
+      toggle.checked = !targetValue;
+      setLogStatus(card, err.message || card.dataset.errorLabel || "Unable to update log notifications.", "bad");
+    } finally {
+      toggle.disabled = false;
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initPushCard();
+  initLogNotifyCard();
 });

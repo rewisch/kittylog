@@ -63,6 +63,8 @@ class NotificationConfig:
     groups: dict[str, GroupConfig]
     rules: list[RuleConfig]
     events: list[EventConfig]
+    log_event_title: str
+    log_event_message: str
 
 
 def _parse_time(value: str) -> dt_time:
@@ -90,6 +92,14 @@ def load_notification_config(path: Path) -> NotificationConfig:
         raise ValueError("window_minutes must be greater than zero")
 
     click_url = str(data.get("click_url") or "/")
+
+    log_events = data.get("log_events") or {}
+    if isinstance(log_events, dict):
+        log_event_title = str(log_events.get("title") or "KittyLog")
+        log_event_message = str(log_events.get("message") or "{task} logged.")
+    else:
+        log_event_title = "KittyLog"
+        log_event_message = "{task} logged."
 
     groups: dict[str, GroupConfig] = {}
     for key, value in (data.get("groups") or {}).items():
@@ -210,6 +220,8 @@ def load_notification_config(path: Path) -> NotificationConfig:
         groups=groups,
         rules=rules,
         events=events,
+        log_event_title=log_event_title,
+        log_event_message=log_event_message,
     )
 
 

@@ -37,5 +37,26 @@
             </div>
         </div>
     </section>
+    <section
+        id="log-notify-card"
+        class="rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4 shadow-lg shadow-black/30"
+        data-enabled="{{ 'true' if notify_on_log else 'false' }}"
+        data-csrf-token="{{ request.session.get('csrf_token') }}"
+        data-enabled-label="{{ t('log_notify_enabled_label', lang) }}"
+        data-disabled-label="{{ t('log_notify_disabled_label', lang) }}"
+        data-error-label="{{ t('log_notify_error', lang) }}"
+    >
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <p class="text-sm font-semibold">{{ t("log_notify_title", lang) }}</p>
+                <p class="text-xs text-slate-400">{{ t("log_notify_description", lang) }}</p>
+                <p class="mt-2 text-xs text-slate-400" data-log-status></p>
+            </div>
+            <label class="inline-flex items-center gap-2 text-xs text-slate-200">
+                <input type="checkbox" class="h-4 w-4 rounded border-white/20 bg-slate-900/60" data-log-toggle>
+                <span>{{ t("log_notify_toggle_label", lang) }}</span>
+            </label>
+        </div>
+    </section>
 </div>
 {% endblock %}

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from pywebpush import WebPushException
 from sqlalchemy import and_, func
 from sqlmodel import Session, select
 
@@ -27,8 +28,9 @@ from .auth import (
 from .database import get_session
 from .settings import get_settings
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
-from .models import Cat, PushSubscription, TaskEvent, TaskType
+from .models import Cat, PushSubscription, TaskEvent, TaskType, UserNotificationPreference
 from .push_config import get_push_settings
+from scripts.dispatch_notifications import load_notification_config, send_web_push
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -46,6 +48,10 @@ class PushSubscriptionIn(BaseModel):
 
 class PushUnsubscribeIn(BaseModel):
     endpoint: str
+
+
+class LogNotificationPreferenceIn(BaseModel):
+    enabled: bool
 
 
 def require_user(request: Request) -> str:
@@ -252,6 +258,77 @@ def create_event(
     session.commit()
     session.refresh(event)
     return event
+
+
+def _load_log_notification_settings() -> tuple[str, str, str]:
+    config_path = Path(__file__).resolve().parent.parent / "config" / "notifications.yml"
+    try:
+        config = load_notification_config(config_path)
+        return config.log_event_title, config.log_event_message, config.click_url
+    except Exception:
+        return "KittyLog", "{task} logged.", "/"
+
+
+def _format_log_message(
+    message_template: str,
+    task_name: str,
+    who: str | None,
+    cat_name: str | None,
+    note: str | None,
+) -> str:
+    values = {
+        "task": task_name,
+        "who": who or "Someone",
+        "cat": cat_name or "",
+        "note": note or "",
+    }
+    try:
+        return message_template.format(**values)
+    except KeyError:
+        return f"{task_name} logged."
+
+
+def dispatch_log_notifications(
+    session: Session,
+    task: TaskType,
+    who: str | None,
+    cat_name: str | None,
+    note: str | None,
+) -> None:
+    prefs = session.exec(
+        select(UserNotificationPreference).where(UserNotificationPreference.notify_on_log == True)  # noqa: E712
+    ).all()
+    if not prefs:
+        return
+    allowed_users = {pref.username for pref in prefs}
+    subscriptions = session.exec(
+        select(PushSubscription).where(PushSubscription.is_active == True)  # noqa: E712
+    ).all()
+    if not subscriptions:
+        return
+    push_settings = get_push_settings()
+    if not push_settings.vapid_private_key:
+        return
+    title, message_template, click_url = _load_log_notification_settings()
+    message = _format_log_message(message_template, task.name, who, cat_name, note)
+
+    for subscription in subscriptions:
+        if subscription.user not in allowed_users:
+            continue
+        try:
+            send_web_push(
+                subscription,
+                title,
+                message,
+                click_url,
+                push_settings.vapid_private_key,
+                push_settings.vapid_subject,
+            )
+        except WebPushException as exc:
+            status = exc.response and exc.response.status_code
+            if status in (404, 410):
+                subscription.is_active = False
+    session.commit()
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -685,6 +762,35 @@ def push_unsubscribe(
     return {"status": "ok"}
 
 
+@router.post("/api/push/log-preference")
+def update_log_preference(
+    payload: LogNotificationPreferenceIn,
+    request: Request,
+    user: str = Depends(require_user),
+    session: Session = Depends(get_session),
+) -> dict[str, str | bool]:
+    csrf_token = request.headers.get("X-CSRF-Token", "")
+    if not validate_csrf_token(request.session.get("csrf_token"), csrf_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid CSRF token")
+    existing = session.exec(
+        select(UserNotificationPreference).where(UserNotificationPreference.username == user)
+    ).first()
+    now = now_utc()
+    if existing:
+        existing.notify_on_log = payload.enabled
+        existing.updated_at = now
+    else:
+        session.add(
+            UserNotificationPreference(
+                username=user,
+                notify_on_log=payload.enabled,
+                updated_at=now,
+            )
+        )
+    session.commit()
+    return {"status": "ok", "enabled": payload.enabled}
+
+
 @router.get("/cats", response_class=HTMLResponse)
 def cats_page(
     request: Request,
@@ -715,10 +821,14 @@ def cats_page(
 def settings_page(
     request: Request,
     user: str = Depends(require_user),
+    session: Session = Depends(get_session),
 ) -> Any:
     lang = resolve_language(request)
     ensure_csrf_token(request)
     push_settings = get_push_settings()
+    preference = session.exec(
+        select(UserNotificationPreference).where(UserNotificationPreference.username == user)
+    ).first()
     response = templates.TemplateResponse(
         request,
         "settings.html",
@@ -727,6 +837,7 @@ def settings_page(
             "lang": lang,
             "user": user,
             "vapid_public_key": push_settings.vapid_public_key,
+            "notify_on_log": preference.notify_on_log if preference else False,
         },
     )
     if request.query_params.get("lang"):
@@ -1051,6 +1162,10 @@ def log_task(
     cat_id_value = parse_cat_id(cat_id)
     cat = validate_cat_for_task(session, task, cat_id_value)
     event = create_event(session, task, actor, note, source="web", cat_id=cat.id if cat else None)
+    try:
+        dispatch_log_notifications(session, task, actor, cat.name if cat else None, note)
+    except Exception:
+        pass
     response = templates.TemplateResponse(
         request,
         "qr_confirm.html",
@@ -1101,6 +1216,10 @@ def qr_landing(
     if auto == 1:
         cat = validate_cat_for_task(session, task, parsed_cat_id)
         event = create_event(session, task, user, note, source="qr", cat_id=cat.id if cat else None)
+        try:
+            dispatch_log_notifications(session, task, user, cat.name if cat else None, note)
+        except Exception:
+            pass
         response = templates.TemplateResponse(
             request,
             "qr_confirm.html",
@@ -1156,6 +1275,10 @@ def qr_confirm(
     cat_id_value = parse_cat_id(cat_id)
     cat = validate_cat_for_task(session, task, cat_id_value)
     event = create_event(session, task, user, note, source="qr", cat_id=cat.id if cat else None)
+    try:
+        dispatch_log_notifications(session, task, user, cat.name if cat else None, note)
+    except Exception:
+        pass
     response = templates.TemplateResponse(
         request,
         "qr_confirm.html",

@@ -59,6 +59,12 @@ class PushSubscription(SQLModel, table=True):
     is_active: bool = Field(default=True, index=True)
 
 
+class UserNotificationPreference(SQLModel, table=True):
+    username: str = Field(primary_key=True, max_length=100)
+    notify_on_log: bool = Field(default=False, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
 class NotificationLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     subscription_id: int = Field(foreign_key="pushsubscription.id", index=True)
