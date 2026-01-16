@@ -94,17 +94,16 @@ def test_log_notification_preference_toggle(client, users_file, monkeypatch) -> 
 
 
 def test_log_notification_dispatch_on_log(client, users_file, monkeypatch) -> None:
-    write_users_file(users_file, {"Livia": "secret"})
+    write_users_file(users_file, {"Livia": "secret", "Max": "secret2"})
     monkeypatch.setenv("KITTYLOG_USERS_FILE", str(users_file))
-    login_user(client, "Livia", "secret")
-
-    response = client.get("/settings")
-    csrf = extract_csrf_token(response.text)
+    login_user(client, "Max", "secret2")
 
     payload = {
         "endpoint": "https://example.com/push/log",
         "keys": {"p256dh": "key", "auth": "auth"},
     }
+    response = client.get("/settings")
+    csrf = extract_csrf_token(response.text)
     response = client.post("/api/push/subscribe", json=payload, headers={"X-CSRF-Token": csrf})
     assert response.status_code == 200
 
@@ -120,12 +119,6 @@ def test_log_notification_dispatch_on_log(client, users_file, monkeypatch) -> No
     )
     monkeypatch.setattr(routes, "send_web_push", _fake_send)
 
-    response = client.get("/")
-    csrf = extract_csrf_token(response.text)
-    response = client.post("/log", data={"slug": "feed", "csrf_token": csrf})
-    assert response.status_code == 200
-    assert len(send_calls) == 0
-
     response = client.post(
         "/api/push/log-preference",
         json={"enabled": True},
@@ -133,6 +126,14 @@ def test_log_notification_dispatch_on_log(client, users_file, monkeypatch) -> No
     )
     assert response.status_code == 200
 
+    login_user(client, "Livia", "secret")
+    response = client.get("/")
+    csrf = extract_csrf_token(response.text)
+    response = client.post("/log", data={"slug": "feed", "csrf_token": csrf})
+    assert response.status_code == 200
+    assert len(send_calls) == 1
+
+    login_user(client, "Max", "secret2")
     response = client.get("/")
     csrf = extract_csrf_token(response.text)
     response = client.post("/log", data={"slug": "feed", "csrf_token": csrf})

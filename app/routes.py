@@ -311,9 +311,12 @@ def dispatch_log_notifications(
         return
     title, message_template, click_url = _load_log_notification_settings()
     message = _format_log_message(message_template, task.name, who, cat_name, note)
+    actor_key = who.casefold() if who else None
 
     for subscription in subscriptions:
         if subscription.user not in allowed_users:
+            continue
+        if actor_key and subscription.user.casefold() == actor_key:
             continue
         try:
             send_web_push(
