@@ -5,16 +5,17 @@ Tiny FastAPI app to log cat-care tasks via web-interface or QR codes. Config liv
 ## Run
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+source .venv/bin/activate
 sudo pacman -S gcc
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-Visit `http://localhost:8000` 
+Visit `http://localhost:8000`
 
 DB and task types are created/updated on startup.
 
 If running over cloudflare:
+
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --workers 1
 
 ## Tests
