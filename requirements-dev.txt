@@ -1,4 +1,6 @@
 pytest
+pytest-playwright
+playwright
 httpx
 pip-tools
 pip-audit

@@ -19,10 +19,53 @@ If running over cloudflare:
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --workers 1
 
 ## Tests
+
+### Unit Tests
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest                    # Run all tests (unit + E2E)
+pytest -m "not e2e"       # Run only unit tests
 ```
+
+### E2E Tests (End-to-End Browser Testing)
+
+E2E tests use Playwright to test the full application in a real browser, covering all user workflows.
+
+**First-time setup:**
+```bash
+# Install dev dependencies (includes pytest-playwright)
+pip install -r requirements-dev.txt
+
+# Install Chromium browser for Playwright (one-time, ~170MB download)
+playwright install chromium
+```
+
+**Running E2E tests:**
+```bash
+# Run all 38 E2E tests
+pytest -m e2e
+
+# Run specific test file
+pytest tests/e2e/test_e2e_cats.py
+
+# Run with visible browser (for debugging)
+HEADED=true pytest -m e2e
+
+# Run specific test in headed mode
+HEADED=true pytest tests/e2e/test_e2e_login.py::test_login_with_valid_credentials_redirects_to_dashboard -v
+```
+
+**What E2E tests cover:**
+- User authentication (login/logout)
+- Cat management (create, edit, deactivate, delete)
+- Task logging from dashboard
+- History filtering (by date, task type, cat)
+- CSV export
+- QR code flows (confirmation, auto-logging)
+- Settings page interactions
+- Insights and statistics
+- Form validation
+- Complex multi-step workflows
 
 ## Dependency updates & security
 
