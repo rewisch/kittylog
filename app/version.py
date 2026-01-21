@@ -12,4 +12,4 @@ def get_version() -> str:
     try:
         return VERSION_PATH.read_text(encoding="utf-8").strip()
     except Exception:
-        return "0.1"
+        return "0.1.0"

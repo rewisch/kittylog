@@ -2,120 +2,204 @@
 
 ## Overview
 
-KittyLog uses an automatic version numbering system that increments with every git commit. The version follows a simple `MAJOR.MINOR` format (e.g., 0.1, 0.2, 0.3).
+KittyLog uses **semantic versioning (semver)** with the format `MAJOR.MINOR.PATCH` (e.g., 0.1.0, 1.2.3).
 
-## How It Works
+This is the industry-standard approach used by npm, Python packages, and most modern software projects. Versions are bumped **manually** when you're ready to release, not automatically on every commit.
 
-1. **Version Storage**: The current version is stored in `version.txt` at the project root
-2. **Auto-Increment**: A git `post-commit` hook automatically increments the version after each commit
-3. **Version Display**: The version appears in the footer of every page (e.g., "KittyLog v0.2")
+## Semantic Versioning
+
+- **MAJOR** (X.0.0): Breaking changes, incompatible API changes
+- **MINOR** (0.X.0): New features, backwards-compatible
+- **PATCH** (0.0.X): Bug fixes, backwards-compatible
+
+Example: `0.1.0` → `0.1.1` (bug fix) → `0.2.0` (new feature) → `1.0.0` (major release)
 
 ## Files Involved
 
-- **`version.txt`**: Stores the current version number
+- **`version.txt`**: Stores the current version (e.g., `0.1.0`)
 - **`app/version.py`**: Python module that reads and exposes the version
-- **`.git/hooks/post-commit`**: Git hook that auto-increments version after commits
+- **`scripts/bump_version.py`**: Utility script to bump version (like `npm version`)
 - **`app/templates/base.html`**: Displays version in the UI footer
 
-## The Post-Commit Hook
+## How to Bump Version
 
-The hook runs automatically after every `git commit` and:
-
-1. Reads the current version from `version.txt`
-2. Increments the minor version number (0.1 → 0.2)
-3. Writes the new version back to `version.txt`
-4. Amends the last commit to include the version file change
-
-**Important**: The hook uses `--amend` to include the version bump in your commit, so you won't see separate version bump commits.
-
-## How to Use
-
-### Normal Workflow
-
-Just commit as usual - the version increments automatically:
+### Using the bump_version.py Script
 
 ```bash
+# Show current version
+python scripts/bump_version.py
+
+# Bump patch version (0.1.0 -> 0.1.1) - for bug fixes
+python scripts/bump_version.py patch
+
+# Bump minor version (0.1.0 -> 0.2.0) - for new features
+python scripts/bump_version.py minor
+
+# Bump major version (0.1.0 -> 1.0.0) - for breaking changes
+python scripts/bump_version.py major
+```
+
+The script will:
+1. Update `version.txt`
+2. Ask if you want to create a git commit
+3. Create commit with message: `chore: bump version to X.Y.Z`
+
+### Manual Version Update
+
+You can also edit `version.txt` directly:
+
+```bash
+echo "1.0.0" > version.txt
+git add version.txt
+git commit -m "chore: release version 1.0.0"
+```
+
+## Typical Workflow
+
+### For a Bug Fix Release
+
+```bash
+# Fix the bug
 git add .
-git commit -m "Add new feature"
-# Version automatically bumps from 0.1 to 0.2 in this commit
+git commit -m "fix: resolve issue with cat selection"
+
+# Bump patch version when ready to release
+python scripts/bump_version.py patch
+# Creates: "chore: bump version to 0.1.1"
+
 git push
 ```
 
-### Manual Version Bump
-
-If you want to manually set a version (e.g., for a major release):
-
-1. Edit `version.txt` directly (e.g., change to `1.0`)
-2. Commit the change
-3. The hook will respect your manual version and continue from there
-
-### Major Version Bumps
-
-To increment the major version (e.g., 0.x → 1.0):
+### For a New Feature
 
 ```bash
-echo "1.0" > version.txt
-git add version.txt
-git commit -m "chore: bump to version 1.0"
-# Next commit will be 1.1, 1.2, etc.
+# Add the feature
+git add .
+git commit -m "feat: add dark mode support"
+
+# Bump minor version when ready to release
+python scripts/bump_version.py minor
+# Creates: "chore: bump version to 0.2.0"
+
+git push
 ```
 
-## Checking the Current Version
+### For a Major Release
+
+```bash
+# Make breaking changes
+git add .
+git commit -m "refactor!: redesign API endpoints"
+
+# Bump major version
+python scripts/bump_version.py major
+# Creates: "chore: bump version to 1.0.0"
+
+git push
+```
+
+## When to Bump Version
+
+**DO bump version:**
+- Before deploying to production
+- When releasing to users
+- After completing a feature or bug fix that's ready for release
+- Following your release schedule (weekly, sprint-based, etc.)
+
+**DON'T bump version:**
+- On every commit (that's what git commits are for)
+- For work-in-progress code
+- During development before features are complete
+
+## Checking Current Version
 
 ```bash
 # From command line
 cat version.txt
 
+# Using the script
+python scripts/bump_version.py
+
 # From Python
 python -c "from app.version import get_version; print(get_version())"
 
 # In the UI
-# Look at the footer of any page: "KittyLog v0.2"
+# Look at the footer of any page: "KittyLog v0.1.0"
+
+# In API docs
+# Visit /docs - version shown in OpenAPI spec
 ```
 
-## Disabling Auto-Increment
+## Integration with CI/CD
 
-If you want to temporarily disable auto-versioning:
+If you use GitHub Actions or similar:
+
+```yaml
+# Example: Auto-bump patch version on push to main
+- name: Bump version
+  run: |
+    python scripts/bump_version.py patch --no-commit
+    git add version.txt
+    git commit -m "chore: auto-bump version [skip ci]"
+    git push
+```
+
+## Comparison to Other Approaches
+
+### ✓ Manual Semver (Current)
+- **Pros**: Industry standard, meaningful versions, full control
+- **Cons**: Requires manual action
+- **Best for**: Production software, user-facing apps
+
+### ✗ Auto-increment on Every Commit (Previous)
+- **Pros**: Fully automatic
+- **Cons**: Version loses meaning, can cause loops, non-standard
+- **Best for**: Internal build numbers only
+
+### ✓ Git Tags
+- **Pros**: Tied to git history, standard practice
+- **Cons**: Requires separate tag management
+- **Best for**: GitHub releases, open source projects
+
+### ✓ Build Numbers from CI
+- **Pros**: Automatic in CI/CD, unique per build
+- **Cons**: Build numbers != version numbers
+- **Best for**: Internal builds, combined with semver
+
+## Advanced Usage
+
+### Skip Git Commit
 
 ```bash
-# Rename or remove the hook
-mv .git/hooks/post-commit .git/hooks/post-commit.disabled
+python scripts/bump_version.py patch --no-commit
+# Updates version.txt but doesn't create commit
 ```
 
-## Technical Details
+### Pre-release Versions
 
-### Why Post-Commit Instead of Pre-Push?
+Edit `version.txt` manually for pre-release versions:
+```
+0.2.0-beta.1
+0.2.0-rc.1
+1.0.0-alpha
+```
 
-- **Post-commit**: Increments version immediately after each commit, included in the same commit via `--amend`
-- **Pre-push**: Would create a separate commit for the version bump, requiring a second push
+### Git Tags (Recommended for Releases)
 
-Post-commit is cleaner and ensures every commit has an updated version.
-
-### Preventing Infinite Loops
-
-The hook checks if the current commit message starts with "chore: bump version to" and skips execution to avoid infinite recursion.
-
-### Integration with FastAPI
-
-The version is loaded at application startup and:
-- Exposed via `FastAPI(version=get_version())`
-- Available in all templates as `{{ app_version }}`
-- Displayed in the OpenAPI/Swagger docs at `/docs`
-
-## Troubleshooting
-
-### Version not incrementing?
-
-Check if the hook is executable:
 ```bash
-ls -la .git/hooks/post-commit
-chmod +x .git/hooks/post-commit  # If needed
+# After bumping version
+git tag v0.1.0
+git push --tags
 ```
 
-### Hook seems to run twice?
+## Why This Approach?
 
-Make sure you're not running `git commit` from within the hook itself (infinite loop protection should catch this).
+1. **Industry Standard**: Same as npm, pip, cargo, etc.
+2. **Meaningful**: Version numbers convey information about changes
+3. **Controlled**: You decide when to bump, not the computer
+4. **Simple**: Easy to understand and maintain
+5. **Flexible**: Works with any workflow or CI/CD system
 
-### Want to see version bump commits separately?
+---
 
-Switch to a pre-commit hook that creates separate commits (see git history for the old pre-push hook implementation).
+**Previous system note**: The old auto-increment-on-commit hook has been removed because it caused version loops and doesn't follow industry best practices.

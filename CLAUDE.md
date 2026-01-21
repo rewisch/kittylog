@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 KittyLog is a FastAPI-based web application for tracking cat care tasks. It features QR code scanning for quick task logging, web push notifications, multi-language support (English/German), and a PWA interface. The app uses SQLite for storage and is designed to run on small hardware like Raspberry Pi.
 
-**Version**: The project uses automatic version numbering (see VERSION_SYSTEM.md). Version auto-increments on every commit via git post-commit hook.
+**Versioning**: Uses semantic versioning (MAJOR.MINOR.PATCH). Bump manually with `python scripts/bump_version.py [major|minor|patch]`. See VERSION_SYSTEM.md for details.
 
 ## Development Commands
 
@@ -141,6 +141,14 @@ pip-audit
 ```bash
 python scripts/manage_users.py alice           # Add new user
 python scripts/manage_users.py alice --update  # Change password/reactivate
+```
+
+### Version Management
+```bash
+python scripts/bump_version.py        # Show current version
+python scripts/bump_version.py patch  # Bug fix: 0.1.0 -> 0.1.1
+python scripts/bump_version.py minor  # New feature: 0.1.0 -> 0.2.0
+python scripts/bump_version.py major  # Breaking change: 0.1.0 -> 1.0.0
 ```
 
 ### QR Code Generation
