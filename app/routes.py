@@ -187,6 +187,23 @@ def parse_date_param(raw_value: str | None, field_name: str) -> date | None:
         )
 
 
+def resolve_date_preset(
+    preset: str | None,
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[date | None, date | None]:
+    """Apply preset date range if no explicit dates are provided."""
+    if preset and not start_date and not end_date:
+        today = date.today()
+        if preset == "today":
+            return today, today
+        if preset == "7d":
+            return today - timedelta(days=6), today
+        if preset == "30d":
+            return today - timedelta(days=29), today
+    return start_date, end_date
+
+
 def parse_timestamp_value(raw_value: str | None) -> datetime:
     """Parse a datetime input (typically datetime-local) into a naive UTC datetime."""
     if raw_value is None:
@@ -216,15 +233,12 @@ def humanize_timestamp(ts: datetime | None, lang: str = "en") -> str:
         return "just now" if lang == "en" else "gerade eben"
     if delta < timedelta(hours=1):
         minutes = int(delta.total_seconds() // 60)
-        suffix = "m ago" if lang == "en" else "Min. her"
-        return f"{minutes}{suffix if lang == 'en' else f' {suffix}'}"
+        return f"{minutes}m ago" if lang == "en" else f"{minutes} Min. her"
     if delta < timedelta(days=1):
         hours = int(delta.total_seconds() // 3600)
-        suffix = "h ago" if lang == "en" else "Std. her"
-        return f"{hours}{suffix if lang == 'en' else f' {suffix}'}"
+        return f"{hours}h ago" if lang == "en" else f"{hours} Std. her"
     days = delta.days
-    suffix = "d ago" if lang == "en" else "Tg. her"
-    return f"{days}{suffix if lang == 'en' else f' {suffix}'}"
+    return f"{days}d ago" if lang == "en" else f"{days} Tg. her"
 
 
 def recency_state(ts: datetime | None) -> str:
@@ -484,17 +498,7 @@ def insights(
 
     start_date_value = parse_date_param(start_date, "start_date")
     end_date_value = parse_date_param(end_date, "end_date")
-    if preset and not start_date_value and not end_date_value:
-        today = date.today()
-        if preset == "today":
-            start_date_value = today
-            end_date_value = today
-        elif preset == "7d":
-            start_date_value = today - timedelta(days=6)
-            end_date_value = today
-        elif preset == "30d":
-            start_date_value = today - timedelta(days=29)
-            end_date_value = today
+    start_date_value, end_date_value = resolve_date_preset(preset, start_date_value, end_date_value)
 
     event_filters = [TaskEvent.deleted == False]  # noqa: E712
     if start_date_value:
@@ -969,17 +973,7 @@ def history(
         base_query = base_query.where(TaskEvent.cat_id == selected_cat_id)
     start_date_value = parse_date_param(start_date, "start_date")
     end_date_value = parse_date_param(end_date, "end_date")
-    if preset and not start_date_value and not end_date_value:
-        today = date.today()
-        if preset == "today":
-            start_date_value = today
-            end_date_value = today
-        elif preset == "7d":
-            start_date_value = today - timedelta(days=6)
-            end_date_value = today
-        elif preset == "30d":
-            start_date_value = today - timedelta(days=29)
-            end_date_value = today
+    start_date_value, end_date_value = resolve_date_preset(preset, start_date_value, end_date_value)
     if start_date_value:
         start_dt = datetime.combine(start_date_value, time.min)
         base_query = base_query.where(TaskEvent.timestamp >= start_dt)
@@ -1080,7 +1074,7 @@ def update_event_time(
     event_id: int,
     timestamp: str = Form(...),
     csrf_token: str = Form(""),
-    user: str = Depends(require_user),
+    _user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> RedirectResponse:
     lang = resolve_language(request)
@@ -1112,7 +1106,7 @@ def delete_event(
     request: Request,
     event_id: int,
     csrf_token: str = Form(""),
-    user: str = Depends(require_user),
+    _user: str = Depends(require_user),
     session: Session = Depends(get_session),
 ) -> RedirectResponse:
     lang = resolve_language(request)

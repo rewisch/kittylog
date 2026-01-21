@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, List
+from typing import Any, Iterable
 
 import yaml
 from sqlmodel import Session, select
@@ -47,7 +47,7 @@ def load_task_configs(path: Path) -> list[TaskConfig]:
         data = yaml.safe_load(f) or {}
 
     tasks: Iterable[dict] = data.get("tasks", [])
-    configs: List[TaskConfig] = []
+    configs: list[TaskConfig] = []
     used_colors: set[str] = set()
     seen_slugs: set[str] = set()
     for idx, item in enumerate(tasks):
@@ -125,19 +125,12 @@ def _assign_color(preferred: str, used_colors: set[str], index: int) -> str:
 
 def _validate_task_item(item: dict[str, Any], index: int) -> None:
     """Validate one task config entry."""
-    required_fields = ("slug", "name")
-    for field in required_fields:
+    for field in ("slug", "name"):
         if field not in item or item[field] in (None, ""):
             raise ValueError(f"tasks[{index}] missing required field '{field}'")
-    if not isinstance(item.get("slug"), (str, int, float)):
-        raise ValueError(f"tasks[{index}].slug must be a string")
-    if not isinstance(item.get("name"), (str, int, float)):
-        raise ValueError(f"tasks[{index}].name must be a string")
-    if "order" in item:
-        raw_order = item["order"]
-        try:
-            int(raw_order)
-        except (TypeError, ValueError):
-            raise ValueError(f"tasks[{index}].order must be an integer")
-    if "requires_cat" in item and not isinstance(item.get("requires_cat"), bool):
+        if not isinstance(item[field], (str, int, float)):
+            raise ValueError(f"tasks[{index}].{field} must be a string")
+    if "order" in item and not isinstance(item["order"], (int, float)):
+        raise ValueError(f"tasks[{index}].order must be an integer")
+    if "requires_cat" in item and not isinstance(item["requires_cat"], bool):
         raise ValueError(f"tasks[{index}].requires_cat must be a boolean")

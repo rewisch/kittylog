@@ -107,6 +107,27 @@ app.mount(
 
 request_logger = logging.getLogger("kittylog.requests")
 
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "img-src 'self' data:; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "script-src 'self' https://cdn.tailwindcss.com; "
+    "manifest-src 'self'; "
+    "connect-src 'self'; "
+    "worker-src 'self'; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'"
+)
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+}
+
 
 def _client_ip(request: Request) -> str:
     """Return best-effort client IP, respecting proxy headers."""
@@ -119,7 +140,7 @@ def _client_ip(request: Request) -> str:
 
 
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
+async def log_requests(request: Request, call_next) -> Response:
     start_time = time.perf_counter()
     client_ip = _client_ip(request)
     status_code = 500
@@ -146,25 +167,10 @@ async def log_requests(request: Request, call_next):
 
 
 @app.middleware("http")
-async def security_headers(request: Request, call_next):
+async def security_headers(request: Request, call_next) -> Response:
     response: Response = await call_next(request)
-    csp = (
-        "default-src 'self'; "
-        "img-src 'self' data:; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "script-src 'self' https://cdn.tailwindcss.com; "
-        "manifest-src 'self'; "
-        "connect-src 'self'; "
-        "worker-src 'self'; "
-        "object-src 'none'; "
-        "frame-ancestors 'none'"
-    )
-    response.headers.setdefault("Content-Security-Policy", csp)
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "no-referrer")
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
     return response
 
 

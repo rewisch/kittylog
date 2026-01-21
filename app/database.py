@@ -1,6 +1,5 @@
 from collections.abc import Generator
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
@@ -9,7 +8,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from .settings import DEFAULT_DB_PATH
 
 
-engine: Optional[Engine] = None
+engine: Engine | None = None
 
 
 def configure_engine(db_path: Path | str | None = None) -> Engine:
@@ -47,32 +46,30 @@ def get_session() -> Generator[Session, None, None]:
         yield session
 
 
+def _add_column_if_missing(
+    target_engine: Engine,
+    table: str,
+    column: str,
+    column_def: str,
+    existing_columns: set[str],
+) -> None:
+    """Add a column to a table if it does not already exist."""
+    if column not in existing_columns:
+        with target_engine.begin() as conn:
+            conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {column_def}")
+
+
 def _ensure_legacy_columns(target_engine: Engine) -> None:
     """Add missing columns when upgrading existing DBs."""
     inspector = inspect(target_engine)
-    tasktype_columns = [col["name"] for col in inspector.get_columns("tasktype")]
-    if "sort_order" not in tasktype_columns:
-        with target_engine.begin() as conn:
-            conn.exec_driver_sql(
-                "ALTER TABLE tasktype ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
-            )
-    if "requires_cat" not in tasktype_columns:
-        with target_engine.begin() as conn:
-            conn.exec_driver_sql(
-                "ALTER TABLE tasktype ADD COLUMN requires_cat BOOLEAN NOT NULL DEFAULT 0"
-            )
 
-    taskevent_columns = [col["name"] for col in inspector.get_columns("taskevent")]
-    if "deleted" not in taskevent_columns:
-        with target_engine.begin() as conn:
-            conn.exec_driver_sql(
-                "ALTER TABLE taskevent ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT 0"
-            )
-    if "cat_id" not in taskevent_columns:
-        with target_engine.begin() as conn:
-            conn.exec_driver_sql(
-                "ALTER TABLE taskevent ADD COLUMN cat_id INTEGER"
-            )
+    tasktype_cols = {col["name"] for col in inspector.get_columns("tasktype")}
+    _add_column_if_missing(target_engine, "tasktype", "sort_order", "INTEGER NOT NULL DEFAULT 0", tasktype_cols)
+    _add_column_if_missing(target_engine, "tasktype", "requires_cat", "BOOLEAN NOT NULL DEFAULT 0", tasktype_cols)
+
+    taskevent_cols = {col["name"] for col in inspector.get_columns("taskevent")}
+    _add_column_if_missing(target_engine, "taskevent", "deleted", "BOOLEAN NOT NULL DEFAULT 0", taskevent_cols)
+    _add_column_if_missing(target_engine, "taskevent", "cat_id", "INTEGER", taskevent_cols)
 
 
 def ensure_db_path_writable(db_path: Path) -> None:

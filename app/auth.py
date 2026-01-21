@@ -6,7 +6,7 @@ import os
 import secrets
 import time
 from pathlib import Path
-from typing import Dict, TypedDict, Optional
+from typing import IO, TypedDict
 
 try:
     import fcntl
@@ -69,13 +69,13 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(computed.hex(), stored_hash)
 
 
-def load_users(path: Path | None = None) -> Dict[str, UserRecord]:
+def load_users(path: Path | None = None) -> dict[str, UserRecord]:
     """Return {username: UserRecord} mapping; ignores malformed lines."""
     users_path = path or get_users_file_path()
     if not users_path.exists():
         return {}
 
-    users: Dict[str, UserRecord] = {}
+    users: dict[str, UserRecord] = {}
     with _locked(users_path, "r") as f:
         for raw_line in f:
             line = raw_line.strip()
@@ -103,7 +103,7 @@ def load_users(path: Path | None = None) -> Dict[str, UserRecord]:
     return users
 
 
-def save_users(users: Dict[str, UserRecord], path: Path | None = None) -> None:
+def save_users(users: dict[str, UserRecord], path: Path | None = None) -> None:
     users_path = path or get_users_file_path()
     users_path.parent.mkdir(parents=True, exist_ok=True)
     with _locked(users_path, "w") as f:
@@ -167,16 +167,16 @@ class _LockedFile:
     def __init__(self, path: Path, mode: str):
         self.path = path
         self.mode = mode
-        self.handle: Optional[object] = None
+        self.handle: IO[str] | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> IO[str]:
         self.handle = self.path.open(self.mode, encoding="utf-8")
         if fcntl:
             lock_type = fcntl.LOCK_SH if "r" in self.mode else fcntl.LOCK_EX
             fcntl.flock(self.handle, lock_type)
         return self.handle
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(self, exc_type, exc, tb) -> None:
         if self.handle:
             if fcntl:
                 fcntl.flock(self.handle, fcntl.LOCK_UN)
@@ -202,19 +202,17 @@ def validate_csrf_token(session_token: str | None, form_token: str | None) -> bo
 
 def resolve_user_name(name: str | None) -> str | None:
     """Return canonical username if it matches a known active user (case-insensitive)."""
-    if name is None:
+    if not name or not name.strip():
         return None
-    cleaned = name.strip()
-    if not cleaned:
-        return None
+    lookup_key = name.strip().casefold()
     users = load_users()
-    mapping: dict[str, str | None] = {}
+    canonical_map: dict[str, str | None] = {}
     for username, record in users.items():
         if not record.get("active", True):
             continue
         key = username.casefold()
-        if key in mapping and mapping[key] != username:
-            mapping[key] = None
+        if key in canonical_map and canonical_map[key] != username:
+            canonical_map[key] = None  # Ambiguous: multiple users map to same key
         else:
-            mapping[key] = username
-    return mapping.get(cleaned.casefold())
+            canonical_map[key] = username
+    return canonical_map.get(lookup_key)
