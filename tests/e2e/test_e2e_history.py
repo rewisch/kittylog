@@ -1,6 +1,6 @@
 """E2E tests for history and filtering workflows."""
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlmodel import Session, select
 from app.database import get_engine
 from app.models import TaskEvent, TaskType, Cat
@@ -16,7 +16,7 @@ def test_filter_history_by_date_range(authenticated_page, uvicorn_server):
         task_type = session.exec(select(TaskType).where(TaskType.slug == "feed")).first()
 
         # Create events at different times
-        today = datetime.utcnow()
+        today = datetime.now(timezone.utc)
         yesterday = today - timedelta(days=1)
         week_ago = today - timedelta(days=7)
 
@@ -61,8 +61,8 @@ def test_filter_history_by_task_type(authenticated_page, uvicorn_server):
         feed_task = session.exec(select(TaskType).where(TaskType.slug == "feed")).first()
         water_task = session.exec(select(TaskType).where(TaskType.slug == "water")).first()
 
-        session.add(TaskEvent(task_type_id=feed_task.id, who="User1", timestamp=datetime.utcnow()))
-        session.add(TaskEvent(task_type_id=water_task.id, who="User2", timestamp=datetime.utcnow()))
+        session.add(TaskEvent(task_type_id=feed_task.id, who="User1", timestamp=datetime.now(timezone.utc)))
+        session.add(TaskEvent(task_type_id=water_task.id, who="User2", timestamp=datetime.now(timezone.utc)))
         session.commit()
 
     # Navigate to history
@@ -101,13 +101,13 @@ def test_filter_history_by_cat(authenticated_page, uvicorn_server):
             task_type_id=task_type.id,
             cat_id=cat1.id,
             who="User1",
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         ))
         session.add(TaskEvent(
             task_type_id=task_type.id,
             cat_id=cat2.id,
             who="User2",
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         ))
         session.commit()
         cat1_id = cat1.id
@@ -158,7 +158,7 @@ def test_delete_history_entry(authenticated_page, uvicorn_server):
         event = TaskEvent(
             task_type_id=task_type.id,
             who="TestUser",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source="test"
         )
         session.add(event)
@@ -191,7 +191,7 @@ def test_edit_event_timestamp(authenticated_page, uvicorn_server):
         event = TaskEvent(
             task_type_id=task_type.id,
             who="TestUser",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source="test"
         )
         session.add(event)
@@ -231,7 +231,7 @@ def test_export_history_csv(authenticated_page, uvicorn_server):
             event = TaskEvent(
                 task_type_id=task_type.id,
                 who=f"User{i}",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 source="test"
             )
             session.add(event)

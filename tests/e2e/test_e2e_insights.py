@@ -1,6 +1,6 @@
 """E2E tests for insights page workflows."""
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlmodel import Session, select
 from app.database import get_engine
 from app.models import TaskEvent, TaskType
@@ -31,7 +31,7 @@ def test_insights_shows_statistics(authenticated_page, uvicorn_server):
             event = TaskEvent(
                 task_type_id=task_type.id,
                 who=f"User{i}",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 source="test"
             )
             session.add(event)
@@ -54,7 +54,7 @@ def test_insights_date_filtering(authenticated_page, uvicorn_server):
     with Session(get_engine()) as session:
         task_type = session.exec(select(TaskType).where(TaskType.slug == "feed")).first()
 
-        today = datetime.utcnow()
+        today = datetime.now(timezone.utc)
         week_ago = today - timedelta(days=7)
 
         session.add(TaskEvent(
@@ -123,13 +123,13 @@ def test_insights_shows_top_tasks(authenticated_page, uvicorn_server):
             session.add(TaskEvent(
                 task_type_id=feed_task.id,
                 who="User1",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 source="test"
             ))
         session.add(TaskEvent(
             task_type_id=water_task.id,
             who="User2",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source="test"
         ))
         session.commit()
