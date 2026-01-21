@@ -30,12 +30,14 @@ from .settings import get_settings
 from .i18n import resolve_language, translate, SUPPORTED_LANGS
 from .models import Cat, PushSubscription, TaskEvent, TaskType, UserNotificationPreference
 from .push_config import get_push_settings
+from .version import get_version
 from scripts.dispatch_notifications import load_notification_config, send_web_push
 
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["t"] = translate
 templates.env.globals["supported_langs"] = SUPPORTED_LANGS
+templates.env.globals["app_version"] = get_version()
 router = APIRouter()
 PER_PAGE = 20
 CAT_UPLOAD_DIR = Path(__file__).parent / "static" / "uploads" / "cats"

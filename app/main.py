@@ -19,6 +19,7 @@ from .database import configure_engine, create_db_and_tables, get_engine
 from .migrations import run_startup_migrations
 from .routes import router
 from .settings import load_settings
+from .version import get_version
 
 
 ENV_PATH = Path(__file__).resolve().parent.parent / "config" / "kittylog.env"
@@ -85,7 +86,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="KittyLog", lifespan=lifespan)
+app = FastAPI(title="KittyLog", version=get_version(), lifespan=lifespan)
 secret_key = _ensure_secret_key()
 cookie_secure = os.getenv("KITTYLOG_SESSION_SECURE", "false").lower() == "true"
 app.add_middleware(
