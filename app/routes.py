@@ -800,6 +800,54 @@ def update_log_preference(
     return {"status": "ok", "enabled": payload.enabled}
 
 
+@router.get("/api/events")
+def api_events(
+    request: Request,
+    date_param: str | None = Query(default=None, alias="date"),
+    user: str = Depends(require_user_or_api),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    if date_param:
+        try:
+            target_date = date.fromisoformat(date_param)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format, use YYYY-MM-DD")
+    else:
+        target_date = datetime.now(timezone.utc).date()
+
+    day_start = datetime.combine(target_date, time.min)
+    day_end = datetime.combine(target_date, time.max)
+
+    events = session.exec(
+        select(TaskEvent)
+        .where(
+            TaskEvent.deleted == False,
+            TaskEvent.timestamp >= day_start,
+            TaskEvent.timestamp <= day_end,
+        )
+        .order_by(TaskEvent.timestamp)
+    ).all()
+
+    summary: dict[str, int] = {}
+    result = []
+    for ev in events:
+        task_type = session.get(TaskType, ev.task_type_id)
+        cat = session.get(Cat, ev.cat_id) if ev.cat_id else None
+        slug = task_type.slug if task_type else str(ev.task_type_id)
+        summary[slug] = summary.get(slug, 0) + 1
+        result.append({
+            "id": ev.id,
+            "task_slug": slug,
+            "task_name": task_type.name if task_type else None,
+            "cat_name": cat.name if cat else None,
+            "logged_at": ev.timestamp.isoformat(),
+            "user": ev.who,
+            "note": ev.note,
+        })
+
+    return {"date": target_date.isoformat(), "events": result, "summary": summary}
+
+
 @router.get("/cats", response_class=HTMLResponse)
 def cats_page(
     request: Request,
